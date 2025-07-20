@@ -1,12 +1,15 @@
 // ==UserScript==
 // @name         Facebook Comment Section 'All comments' by default
-// @namespace    https://github.com/myouisaur/facebook_show-all-comments
+// @namespace    https://github.com/myouisaur/Facebook
 // @version      1.0
 // @description  Automatically selects "All comments" on Facebook comment.
 // @author       Xiv
 // @match        https://*.facebook.com/*
 // @grant        none
+// @updateURL    https://myouisaur.github.io/Facebook/show-all-comments.user.js
+// @downloadURL  https://myouisaur.github.io/Facebook/show-all-comments.user.js
 // ==/UserScript==
+
 
 (function () {
     'use strict';

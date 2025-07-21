@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Facebook Comment Section 'All comments' by default
+// @name         [Facebook] 'All comments' by default
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      1.1
+// @version      1.2
 // @description  Automatically selects "All comments" on Facebook comment.
 // @author       Xiv
 // @match        https://*.facebook.com/*

@@ -2,7 +2,7 @@
 // @name         [Facebook] Media Extractor
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      1.12
+// @version      1.13
 // @description  Adds open + download buttons to Facebook images when viewing /photo or /stories.
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -224,5 +224,4 @@
     attributeFilter: ['src'] // react to story img src changes
   });
 
-  console.log('[Facebook Image Extractor] loaded!');
 })();

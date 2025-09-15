@@ -2,7 +2,7 @@
 // @name         [Facebook] 'All comments' by default
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      1.3
+// @version      1.4
 // @description  Automatically selects "All comments" on Facebook comment.
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -117,5 +117,4 @@
     // === Boot all modules ===
     scriptBoot();
     
-console.log('[Facebook Show-All-Comments] loaded!');
 })();

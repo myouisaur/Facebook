@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         [[STAGING [Facebook] Media Extractor
+// @name         [Facebook] Media Extractor
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      2.0
+// @version      2.1
 // @description  Adds open + download buttons to Facebook images when viewing /photo or /stories.
 // @author       Xiv
 // @match        *://*.facebook.com/*

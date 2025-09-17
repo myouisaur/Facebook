@@ -2,7 +2,7 @@
 // @name         [Facebook] Media Extractor
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      1.14
+// @version      1.15
 // @description  Adds open + download buttons to Facebook images when viewing /photo or /stories.
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -56,8 +56,13 @@
       box-shadow: 0 6px 18px rgba(0,0,0,0.2);
       transition: transform 0.12s ease, opacity 0.12s ease;
     }
-    .xiv-fb-btn:hover { transform: scale(1.06); }
-    .xiv-fb-btn:active { transform: scale(0.98); opacity: 0.9; }
+    .xiv-fb-btn:hover {
+      transform: scale(1.05);
+    }
+    .xiv-fb-btn:active {
+      transform: scale(0.95);
+      opacity: 0.9;
+    }
   `);
 
   // ---------- Helpers ----------

@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         [Facebook] Media Extractor
+// @name         [[STAGING [Facebook] Media Extractor
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      1.15
+// @version      2.0
 // @description  Adds open + download buttons to Facebook images when viewing /photo or /stories.
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -16,18 +16,7 @@
 
   // ---------- Styling ----------
   GM_addStyle(`
-    .xiv-fb-photo-btn-container {
-      position: absolute !important;
-      bottom: 14px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex !important;
-      gap: 6px;
-      z-index: 999999 !important;
-      opacity: 1;
-      pointer-events: auto;
-    }
-
+    .xiv-fb-photo-btn-container,
     .xiv-fb-story-btn-container {
       position: absolute !important;
       bottom: 14px;
@@ -39,7 +28,6 @@
       opacity: 1;
       pointer-events: auto;
     }
-
     .xiv-fb-btn {
       width: 36px;
       height: 36px;
@@ -81,116 +69,119 @@
     const h = el.naturalHeight || el.offsetHeight || 0;
     return `${w}x${h}`;
   }
-  function downloadImage(url, filename) {
-    // Convert to highest quality JPG before downloading
-    const img = new Image();
-    img.crossOrigin = 'anonymous'; // Handle CORS
 
-    img.onload = function() {
-      // Create canvas for conversion
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-
-      // Set canvas size to image size
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-
-      // Fill white background (for transparency conversion)
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Draw image on canvas
-      ctx.drawImage(img, 0, 0);
-
-      // Convert to highest quality JPG
-      canvas.toBlob(function(blob) {
-        if (blob) {
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = filename.replace(/\.(png|webp|jpg|jpeg)$/i, '.jpg');
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          URL.revokeObjectURL(a.href);
+  // Get highest-res URL (retry if Facebook is serving preview quality)
+  function getHighResUrl(img, retries = 5) {
+    return new Promise((resolve) => {
+      let attempts = 0;
+      function check() {
+        const url = img.src;
+        if (url && !url.includes("safe_image") && !url.includes("preview") && url.includes("fbcdn.net")) {
+          resolve(url);
+        } else if (attempts < retries) {
+          attempts++;
+          setTimeout(check, 400); // retry after 400ms
         } else {
-          // Fallback to original method
-          window.open(url, '_blank', 'noopener,noreferrer');
+          resolve(url); // fallback: whatever is available
         }
-      }, 'image/jpeg', 1.0); // 1.0 = highest quality
-    };
+      }
+      check();
+    });
+  }
 
-    img.onerror = function() {
-      // Fallback to original download method
-      fetch(url)
+  // Download function: keep JPG/JPEG originals, convert others at 0.92
+  function downloadImage(url, filename) {
+    if (/\.(jpg|jpeg)$/i.test(filename)) {
+      return fetch(url)
         .then(r => r.ok ? r.blob() : Promise.reject())
         .then(blob => {
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);
-          a.download = filename || `fb-img-${genRandom(15)}.jpg`;
+          a.download = filename;
           document.body.appendChild(a);
           a.click();
           a.remove();
           URL.revokeObjectURL(a.href);
         })
         .catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
+    }
+
+    // Convert PNG/WEBP → JPG
+    if (/\.(png|webp)$/i.test(filename)) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function () {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(function (blob) {
+          if (blob) {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename.replace(/\.(png|webp)$/i, '.jpg');
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(a.href);
+          } else {
+            window.open(url, '_blank', 'noopener,noreferrer');
+          }
+        }, 'image/jpeg', 0.92);
+      };
+      img.onerror = () => window.open(url, '_blank', 'noopener,noreferrer');
+      img.src = url;
+      return;
+    }
+
+    // Fallback
+    fetch(url)
+      .then(r => r.ok ? r.blob() : Promise.reject())
+      .then(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+      })
+      .catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
+  }
+
+  // ---------- Buttons ----------
+  function addButtons(imgEl, filename, isStory = false) {
+    if (!imgEl || processedElements.has(imgEl)) return;
+    const parent = imgEl.parentElement;
+    if (!parent) return;
+
+    const container = document.createElement('div');
+    container.className = isStory ? 'xiv-fb-story-btn-container' : 'xiv-fb-photo-btn-container';
+
+    // Open button
+    const openBtn = document.createElement('div');
+    openBtn.className = 'xiv-fb-btn';
+    openBtn.textContent = '🔗';
+    openBtn.title = 'Open image in new tab';
+    openBtn.onmousedown = async e => {
+      e.stopPropagation(); e.preventDefault();
+      const url = await getHighResUrl(imgEl);
+      window.open(url, '_blank');
     };
 
-    // Start loading image
-    img.src = url;
-  }
-
-  // ---------- Photo Buttons ----------
-  function addPhotoButtons(imgEl, url, filename) {
-    if (!imgEl || processedElements.has(imgEl)) return;
-
-    const parent = imgEl.parentElement;
-    if (!parent) return;
-
-    const container = document.createElement('div');
-    container.className = 'xiv-fb-photo-btn-container';
-
-    const openBtn = document.createElement('div');
-    openBtn.className = 'xiv-fb-btn';
-    openBtn.textContent = '🔗';
-    openBtn.title = 'Open image in new tab';
-    openBtn.onmousedown = e => { e.stopPropagation(); e.preventDefault(); window.open(url, '_blank'); };
-
+    // Download button
     const dlBtn = document.createElement('div');
     dlBtn.className = 'xiv-fb-btn';
     dlBtn.textContent = '⬇';
     dlBtn.title = 'Download image';
-    dlBtn.onmousedown = e => { e.stopPropagation(); e.preventDefault(); downloadImage(url, filename); };
-
-    container.appendChild(openBtn);
-    container.appendChild(dlBtn);
-
-    if (imgEl.nextSibling) parent.insertBefore(container, imgEl.nextSibling);
-    else parent.appendChild(container);
-
-    processedElements.add(imgEl);
-  }
-
-  // ---------- Story Buttons ----------
-  function addStoryButtons(imgEl, url, filename) {
-    if (!imgEl || processedElements.has(imgEl)) return;
-
-    const parent = imgEl.parentElement;
-    if (!parent) return;
-
-    const container = document.createElement('div');
-    container.className = 'xiv-fb-story-btn-container';
-
-    const openBtn = document.createElement('div');
-    openBtn.className = 'xiv-fb-btn';
-    openBtn.textContent = '🔗';
-    openBtn.title = 'Open image in new tab';
-    openBtn.onmousedown = e => { e.stopPropagation(); e.preventDefault(); window.open(url, '_blank'); };
-
-    const dlBtn = document.createElement('div');
-    dlBtn.className = 'xiv-fb-btn';
-    dlBtn.textContent = '⬇';
-    dlBtn.title = 'Download image';
-    dlBtn.onmousedown = e => { e.stopPropagation(); e.preventDefault(); downloadImage(url, filename); };
+    dlBtn.onmousedown = async e => {
+      e.stopPropagation(); e.preventDefault();
+      const url = await getHighResUrl(imgEl);
+      downloadImage(url, filename);
+    };
 
     container.appendChild(openBtn);
     container.appendChild(dlBtn);
@@ -206,10 +197,10 @@
     if (!/\/photo/.test(location.pathname)) return;
     document.querySelectorAll('div[role="dialog"] img[src*="fbcdn.net"]').forEach(img => {
       if (!isLargeEnough(img)) return;
-      const url = img.src;
       const resolution = getResolution(img);
-      const ext = url.includes('.png') ? 'png' : url.includes('.webp') ? 'webp' : 'jpg';
-      addPhotoButtons(img, url, `fb-photo-${resolution}-${genRandom()}.${ext}`);
+      const url = img.src;
+      const ext = url.includes('.png') ? 'png' : url.includes('.webp') ? 'webp' : url.includes('.jpeg') ? 'jpeg' : 'jpg';
+      addButtons(img, `fb-photo-${resolution}-${genRandom()}.${ext}`, false);
     });
   }
 
@@ -217,10 +208,10 @@
     if (!/\/stories\//.test(location.pathname)) return;
     document.querySelectorAll('div[role="dialog"] img[src*="fbcdn.net"]').forEach(img => {
       if (!isLargeEnough(img)) return;
-      const url = img.src;
       const resolution = getResolution(img);
-      const ext = url.includes('.png') ? 'png' : url.includes('.webp') ? 'webp' : 'jpg';
-      addStoryButtons(img, url, `fb-story-${resolution}-${genRandom()}.${ext}`);
+      const url = img.src;
+      const ext = url.includes('.png') ? 'png' : url.includes('.webp') ? 'webp' : url.includes('.jpeg') ? 'jpeg' : 'jpg';
+      addButtons(img, `fb-story-${resolution}-${genRandom()}.${ext}`, true);
     });
   }
 
@@ -233,7 +224,7 @@
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['src'] // react to story img src changes
+    attributeFilter: ['src']
   });
 
 })();

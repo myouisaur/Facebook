@@ -2,7 +2,7 @@
 // @name         [Facebook] Media Extractor
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      1.13
+// @version      1.14
 // @description  Adds open + download buttons to Facebook images when viewing /photo or /stories.
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -63,13 +63,18 @@
   // ---------- Helpers ----------
   const processedElements = new WeakSet();
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  function genRandom(len = 8) {
+  function genRandom(len = 15) {
     return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
   }
   function isLargeEnough(el) {
     const w = el.naturalWidth || el.offsetWidth || 0;
     const h = el.naturalHeight || el.offsetHeight || 0;
     return w >= 200 && h >= 200;
+  }
+  function getResolution(el) {
+    const w = el.naturalWidth || el.offsetWidth || 0;
+    const h = el.naturalHeight || el.offsetHeight || 0;
+    return `${w}x${h}`;
   }
   function downloadImage(url, filename) {
     // Convert to highest quality JPG before downloading
@@ -116,7 +121,7 @@
         .then(blob => {
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);
-          a.download = filename || `fb-img-${genRandom(6)}.jpg`;
+          a.download = filename || `fb-img-${genRandom(15)}.jpg`;
           document.body.appendChild(a);
           a.click();
           a.remove();
@@ -197,8 +202,9 @@
     document.querySelectorAll('div[role="dialog"] img[src*="fbcdn.net"]').forEach(img => {
       if (!isLargeEnough(img)) return;
       const url = img.src;
+      const resolution = getResolution(img);
       const ext = url.includes('.png') ? 'png' : url.includes('.webp') ? 'webp' : 'jpg';
-      addPhotoButtons(img, url, `fb-photo-${genRandom()}.${ext}`);
+      addPhotoButtons(img, url, `fb-photo-${resolution}-${genRandom()}.${ext}`);
     });
   }
 
@@ -207,8 +213,9 @@
     document.querySelectorAll('div[role="dialog"] img[src*="fbcdn.net"]').forEach(img => {
       if (!isLargeEnough(img)) return;
       const url = img.src;
+      const resolution = getResolution(img);
       const ext = url.includes('.png') ? 'png' : url.includes('.webp') ? 'webp' : 'jpg';
-      addStoryButtons(img, url, `fb-story-${genRandom()}.${ext}`);
+      addStoryButtons(img, url, `fb-story-${resolution}-${genRandom()}.${ext}`);
     });
   }
 

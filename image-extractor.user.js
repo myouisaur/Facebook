@@ -2,7 +2,7 @@
 // @name         [Facebook] Media Extractor
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      2.2
+// @version      2.3
 // @description  Adds open + download buttons to Facebook images when viewing /photo or /stories.
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -53,17 +53,22 @@
       opacity: 0.9;
     }
 
-    /* --- Added: Smooth fade for photo/feed buttons on parent hover --- */
+    /* Photo/feed buttons: smooth hover like Twitter */
     .xiv-fb-photo-btn-container {
       opacity: 0;
-      transition: opacity 0.3s ease 0.2s; /* fade out lingers */
+      pointer-events: none;
+      transition: opacity 0.15s ease;
     }
-    .show-buttons-parent:hover .xiv-fb-photo-btn-container {
-      opacity: 1;
-      transition: opacity 0.3s ease 0s; /* instant fade in */
+    .show-buttons-parent:hover .xiv-fb-photo-btn-container,
+    .xiv-fb-photo-btn-container:hover {
+      opacity: 1 !important;
+      pointer-events: auto !important;
     }
+    
+    /* Story buttons: always visible */
     .xiv-fb-story-btn-container {
-      opacity: 1 !important; /* always visible in stories */
+      opacity: 1 !important;
+      pointer-events: auto !important;
     }
   `);
 

@@ -2,7 +2,7 @@
 // @name         [Facebook] Reel Downloader
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      5.6
+// @version      5.7
 // @description  Adds a button to download Facebook reels via FDownloader
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -28,27 +28,31 @@
 
     GM_addStyle(`
         #fb-fdownloader-btn {
-            width: 40px;
-            height: 40px;
-            background-color: rgba(255, 255, 255, 0.1);
+            width: 48px; /* Slightly larger for easier clicking as a floating action button */
+            height: 48px;
+            background-color: rgba(58, 59, 60, 0.85); /* FB native dark-gray */
             color: #E5E7EB;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            z-index: 9999;
+            z-index: 99999; /* Max z-index to stay above everything */
             transition: background-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
             user-select: none;
+
+            /* Fixed Bottom-Left Placement */
             position: fixed;
-            top: -999px;
-            left: -999px;
+            bottom: 24px;
+            left: 24px;
             margin: 0;
             box-sizing: border-box;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); /* Added drop shadow for visibility */
         }
 
         #fb-fdownloader-btn:not(.disabled):hover {
-            background-color: rgba(255, 255, 255, 0.2);
+            background-color: rgba(74, 75, 76, 0.95);
+            transform: scale(1.05);
         }
 
         #fb-fdownloader-btn.disabled {
@@ -57,8 +61,8 @@
         }
 
         #fb-fdownloader-btn svg {
-            width: 22px;
-            height: 22px;
+            width: 24px;
+            height: 24px;
             fill: currentColor;
         }
 
@@ -73,13 +77,6 @@
         }
     `);
 
-    // --- State Variables (Facebook Side) ---
-    let layoutObserver = null;
-    let fbLogoElement = null;
-    let targetCloseBtn = null;
-    let uiSearchObserver = null;
-    let activeBanner = null;
-
     // --- Core Initialization ---
     function init() {
         if (window.location.hostname.includes('facebook.com')) {
@@ -91,7 +88,7 @@
     }
 
     // ==========================================
-    // FACEBOOK UI LOGIC
+    // FACEBOOK UI LOGIC (Static Placement)
     // ==========================================
 
     function setupZeroOverheadUrlTracker() {
@@ -117,83 +114,12 @@
 
     function checkCurrentRoute() {
         const path = window.location.pathname;
-        // Wakes up for Reels, standard Video pages, OR strictly /watch/ pages
         const isTargetPage = path.startsWith('/reel/') || path.startsWith('/reels/') || path.includes('/videos/') || path.startsWith('/watch/');
 
         if (isTargetPage) {
-            waitForFacebookUI();
-        } else {
-            cleanupFacebookUI();
-        }
-    }
-
-    function waitForFacebookUI() {
-        if (uiSearchObserver) uiSearchObserver.disconnect();
-        if (findAndBindElements()) return;
-
-        uiSearchObserver = new MutationObserver(() => {
-            if (findAndBindElements()) {
-                uiSearchObserver.disconnect();
-                uiSearchObserver = null;
-            }
-        });
-        uiSearchObserver.observe(document.body, { childList: true, subtree: true });
-    }
-
-    function findAndBindElements() {
-        const banner = document.querySelector('div[role="banner"]');
-        if (!banner) return false;
-
-        fbLogoElement = banner.querySelector('a[aria-label="Facebook"], a[href="/"][role="link"]');
-        const closeIconPath = banner.querySelector('svg path[d^="M15.543"]');
-        targetCloseBtn = closeIconPath ? closeIconPath.closest('div[role="button"]') : null;
-
-        if (fbLogoElement) {
-            activeBanner = banner;
             injectButton();
-            setupLayoutTracker(banner);
-            return true;
-        }
-        return false;
-    }
-
-    function setupLayoutTracker(bannerElement) {
-        if (layoutObserver) layoutObserver.disconnect();
-
-        layoutObserver = new ResizeObserver(() => {
-            if (!document.body.contains(bannerElement)) {
-                cleanupFacebookUI();
-                waitForFacebookUI();
-                return;
-            }
-            updateButtonPosition();
-        });
-
-        layoutObserver.observe(bannerElement);
-        updateButtonPosition();
-    }
-
-    function updateButtonPosition() {
-        const ourBtn = document.getElementById('fb-fdownloader-btn');
-        if (!ourBtn || !fbLogoElement) return;
-
-        const fbRect = fbLogoElement.getBoundingClientRect();
-
-        if (fbRect.width > 0 && fbRect.height > 0) {
-            let targetLeft = fbRect.right + 8;
-
-            if (targetCloseBtn) {
-                const closeRect = targetCloseBtn.getBoundingClientRect();
-                const stride = fbRect.left - closeRect.left;
-                if (stride > 0 && stride < 200) {
-                    targetLeft = fbRect.left + stride;
-                }
-            }
-
-            ourBtn.style.top = fbRect.top + 'px';
-            ourBtn.style.left = targetLeft + 'px';
         } else {
-            ourBtn.style.top = '-999px';
+            removeButton();
         }
     }
 
@@ -217,7 +143,13 @@
             await handleButtonClick(this);
         });
 
+        // Append directly to the body, bypassing Facebook's React containers completely
         document.body.appendChild(button);
+    }
+
+    function removeButton() {
+        const btn = document.getElementById('fb-fdownloader-btn');
+        if (btn) btn.remove();
     }
 
     async function handleButtonClick(clickedButton) {
@@ -231,7 +163,6 @@
         // Smart URL Sanitization
         if (rawUrl.includes('/watch/')) {
             try {
-                // Extract just the base and the ?v= ID, discarding tracking garbage
                 const urlObj = new URL(rawUrl);
                 const videoId = urlObj.searchParams.get('v');
                 if (videoId) {
@@ -241,7 +172,6 @@
                 console.warn("Failed to parse watch URL, using raw");
             }
         } else {
-            // Safe to aggressively strip query strings for reels and standard videos
             cleanUrl = rawUrl.split('?')[0];
         }
 
@@ -275,22 +205,6 @@
             clickedButton.classList.remove('success', 'error', 'disabled');
             clickedButton.dataset.clicking = "false";
         }, CONFIG.DEBOUNCE_TIME_MS);
-    }
-
-    function cleanupFacebookUI() {
-        if (layoutObserver) {
-            layoutObserver.disconnect();
-            layoutObserver = null;
-        }
-        if (uiSearchObserver) {
-            uiSearchObserver.disconnect();
-            uiSearchObserver = null;
-        }
-        const btn = document.getElementById('fb-fdownloader-btn');
-        if (btn) btn.remove();
-        fbLogoElement = null;
-        targetCloseBtn = null;
-        activeBanner = null;
     }
 
     // ==========================================

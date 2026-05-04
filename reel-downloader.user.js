@@ -2,7 +2,7 @@
 // @name         [Facebook] Reel Downloader
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      5.7
+// @version      6.1
 // @description  Adds a button to download Facebook reels via FDownloader
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -28,31 +28,29 @@
 
     GM_addStyle(`
         #fb-fdownloader-btn {
-            width: 48px; /* Slightly larger for easier clicking as a floating action button */
-            height: 48px;
-            background-color: rgba(58, 59, 60, 0.85); /* FB native dark-gray */
+            width: 40px;
+            height: 40px;
+            background-color: rgba(255, 255, 255, 0.1);
             color: #E5E7EB;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            z-index: 99999; /* Max z-index to stay above everything */
-            transition: background-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+            z-index: 99999;
+            transition: background-color 0.2s ease, opacity 0.2s ease;
             user-select: none;
 
-            /* Fixed Bottom-Left Placement */
+            /* Fixed Bottom-Left Placement, Elevated to clear video controls */
             position: fixed;
-            bottom: 24px;
-            left: 24px;
+            bottom: 42px; /* Shifted up from 24px */
+            left: 18px;
             margin: 0;
             box-sizing: border-box;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); /* Added drop shadow for visibility */
         }
 
         #fb-fdownloader-btn:not(.disabled):hover {
-            background-color: rgba(74, 75, 76, 0.95);
-            transform: scale(1.05);
+            background-color: rgba(255, 255, 255, 0.2);
         }
 
         #fb-fdownloader-btn.disabled {
@@ -61,8 +59,8 @@
         }
 
         #fb-fdownloader-btn svg {
-            width: 24px;
-            height: 24px;
+            width: 22px;
+            height: 22px;
             fill: currentColor;
         }
 
@@ -143,7 +141,6 @@
             await handleButtonClick(this);
         });
 
-        // Append directly to the body, bypassing Facebook's React containers completely
         document.body.appendChild(button);
     }
 
@@ -160,7 +157,6 @@
         let rawUrl = window.location.href;
         let cleanUrl = rawUrl;
 
-        // Smart URL Sanitization
         if (rawUrl.includes('/watch/')) {
             try {
                 const urlObj = new URL(rawUrl);

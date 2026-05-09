@@ -2,7 +2,7 @@
 // @name         [Facebook] Reel Downloader
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      6.2
+// @version      6.3
 // @description  Adds a button to download Facebook reels via FDownloader
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -43,7 +43,7 @@
 
             /* Fixed Bottom-Left Placement, Elevated to clear video controls */
             position: fixed;
-            bottom: 50%; /* Shifted up from 42px */
+            bottom: 75%; /* Shifted up from 42px */
             left: 18px;
             margin: 0;
             box-sizing: border-box;

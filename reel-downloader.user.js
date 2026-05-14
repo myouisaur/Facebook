@@ -2,7 +2,7 @@
 // @name         [Facebook] Reel Downloader
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      7.0
+// @version      7.1
 // @description  Adds a responsive button to safely route and download Facebook reels via FDownloader.
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -48,26 +48,21 @@
 
     GM_addStyle(`
         #fb-dl-btn {
-            width: clamp(40px, 4vw, 48px);
-            height: clamp(40px, 4vw, 48px);
-            background-color: rgba(255, 255, 255, 0.1);
-            color: #E5E7EB;
+            width: 40px;
+            height: 40px;
+            background-color: var(--secondary-button-background, rgba(255, 255, 255, 0.1));
+            color: var(--primary-icon, #E5E7EB);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            z-index: 99999;
+            z-index: 9999;
             transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
             user-select: none;
-
-            /* Responsive Bottom-Left Placement */
-            position: fixed;
-            bottom: clamp(80px, 15vh, 140px);
-            left: clamp(16px, 2vw, 32px);
-            margin: 0;
+            flex-shrink: 0;
+            margin-right: 8px; /* Gap before the Menu button */
             box-sizing: border-box;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
 
         #fb-dl-btn:focus-visible {
@@ -76,7 +71,7 @@
         }
 
         #fb-dl-btn:not(.fb-dl-disabled):hover {
-            background-color: rgba(255, 255, 255, 0.25);
+            background-color: var(--secondary-button-background-floating, rgba(255, 255, 255, 0.25));
             transform: scale(1.05);
         }
 
@@ -87,8 +82,8 @@
         }
 
         #fb-dl-btn svg {
-            width: 55%;
-            height: 55%;
+            width: 20px;
+            height: 20px;
             fill: currentColor;
             pointer-events: none;
         }
@@ -153,25 +148,62 @@
 
         requestAnimationFrame(() => {
             if (isTargetPage) {
-                injectButton();
+                ensureButtonInHeader();
             } else {
                 removeButton();
             }
         });
     }
 
-    function injectButton() {
+    function ensureButtonInHeader() {
         if (document.getElementById('fb-dl-btn')) return;
+
+        const menuBtn = document.querySelector('div[aria-label="Facebook menu"]');
+        if (menuBtn) {
+            injectButton(menuBtn);
+        } else {
+            waitForMenuButtonAndInject();
+        }
+    }
+
+    function waitForMenuButtonAndInject() {
+        log('Menu button not found yet, setting up observer...');
+
+        const observer = new MutationObserver((mutations, obs) => {
+            const menuBtn = document.querySelector('div[aria-label="Facebook menu"]');
+            if (menuBtn) {
+                obs.disconnect();
+                clearTimeout(timeoutId);
+                injectButton(menuBtn);
+            }
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        const timeoutId = setTimeout(() => {
+            observer.disconnect();
+            warn('Observer timed out waiting for the Facebook Menu button.');
+        }, CONFIG.OBSERVER_TIMEOUT_MS);
+    }
+
+    function injectButton(menuBtn) {
+        if (document.getElementById('fb-dl-btn')) return;
+
+        // Facebook wraps the menu button in a span inside a flex container
+        const targetContainer = menuBtn.closest('span');
+        if (!targetContainer || !targetContainer.parentElement) {
+            warn('Could not find suitable parent container for header injection.');
+            return;
+        }
 
         const button = document.createElement('div');
         button.id = 'fb-dl-btn';
         button.title = 'Download via FDownloader';
         button.dataset.clicking = "false";
-        button.tabIndex = 0; // Make focusable
+        button.tabIndex = 0;
         button.setAttribute('role', 'button');
         button.setAttribute('aria-label', 'Download Facebook Video');
 
-        // Safely construct SVG
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 24 24');
 
@@ -187,7 +219,6 @@
             await handleButtonClick(this, path);
         });
 
-        // Allow keyboard activation
         button.addEventListener('keydown', async function(e) {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -195,8 +226,9 @@
             }
         });
 
-        document.body.appendChild(button);
-        log('Download button injected');
+        // Insert right before the menu button's wrapper span
+        targetContainer.parentElement.insertBefore(button, targetContainer);
+        log('Download button injected into header');
     }
 
     function removeButton() {

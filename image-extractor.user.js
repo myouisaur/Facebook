@@ -2,7 +2,7 @@
 // @name         [Facebook] Media Extractor
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      3.6
+// @version      3.9
 // @description  Adds open and download buttons to Facebook images in photo and story views.
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -59,7 +59,7 @@
             /* Hidden State: Shifted down and scaled slightly for a float-in entrance */
             transform: translateX(-50%) translateY(16px) scale(0.9);
             display: flex !important;
-            gap: clamp(0.5rem, 1vw, 0.75rem);
+            gap: 12px;
             z-index: 999999 !important;
             opacity: 0;
             pointer-events: none;
@@ -67,7 +67,7 @@
             transition: opacity 0.3s ease, transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
-        .xiv-photo-parent:hover .xiv-fb-btn-container {
+        .xiv-fb-btn-container.xiv-visible {
             opacity: 1 !important;
             /* Visible State: Rests at baseline position */
             transform: translateX(-50%) translateY(0) scale(1) !important;
@@ -93,44 +93,188 @@
             }
         }
 
+        /* ── Liquid Glass Button Shell ────────────────────────────── */
         .xiv-fb-btn {
-            width: clamp(2.25rem, 4vw, 2.75rem);
-            height: clamp(2.25rem, 4vw, 2.75rem);
-            background: rgba(20, 20, 20, 0.6);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            color: #ffffff;
+            position: relative;
+            width: clamp(2rem, 3vw, 2.25rem);
+            height: clamp(2rem, 3vw, 2.25rem);
             border-radius: 50%;
+            border: none;
+            outline: none;
+            overflow: hidden;
             cursor: pointer;
-            border: 1px solid rgba(255, 255, 255, 0.2);
             display: flex !important;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-            transition: transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1), background-color 0.25s ease, border-color 0.25s ease;
+            flex-shrink: 0;
+            color: rgba(255, 255, 255, 0.96);
+            background: rgba(255, 255, 255, 0.14);
+            backdrop-filter: blur(24px) saturate(180%) brightness(1.1);
+            -webkit-backdrop-filter: blur(24px) saturate(180%) brightness(1.1);
+            box-shadow:
+                inset 0  1.5px 0   rgba(255,255,255,0.75),
+                inset 0 -1.5px 0   rgba(255,255,255,0.06),
+                inset  1px 0   0   rgba(255,255,255,0.30),
+                inset -1px 0   0   rgba(255,255,255,0.10),
+                0 0 0 0.5px        rgba(255,255,255,0.20),
+                0 6px 20px         rgba(0,0,0,0.32),
+                0 2px  6px         rgba(0,0,0,0.20);
+            transition:
+                transform       0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow      0.35s ease,
+                background      0.35s ease;
         }
 
-        .xiv-fb-btn svg {
-            width: 50% !important;
-            height: 50% !important;
-            display: block !important;
-            fill: none !important;
-            overflow: visible !important;
+        .xiv-fb-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            padding: 1px;
+            background: linear-gradient(
+                155deg,
+                rgba(255,255,255,0.72) 0%,
+                rgba(255,255,255,0.35) 25%,
+                rgba(255,255,255,0.08) 55%,
+                rgba(255,255,255,0.22) 100%
+            );
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+            z-index: 5;
+            transition: background 0.35s ease;
+        }
+
+        .xiv-fb-btn::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 58%;
+            background: radial-gradient(
+                ellipse 75% 70% at 50% -8%,
+                rgba(255,255,255,0.58)  0%,
+                rgba(255,255,255,0.20) 40%,
+                rgba(255,255,255,0.05) 70%,
+                transparent            90%
+            );
+            border-radius: 50% 50% 0 0;
+            pointer-events: none;
+            z-index: 5;
+            transition: background 0.35s ease;
         }
 
         .xiv-fb-btn:hover {
-            transform: scale(1.08);
-            background: rgba(20, 20, 20, 0.85);
-            border-color: rgba(255, 255, 255, 0.4);
+            transform: scale(1.075);
+            background: rgba(255, 255, 255, 0.22);
+            backdrop-filter: blur(32px) saturate(210%) brightness(1.18);
+            -webkit-backdrop-filter: blur(32px) saturate(210%) brightness(1.18);
+            box-shadow:
+                inset 0  1.5px 0   rgba(255,255,255,0.85),
+                inset 0 -1.5px 0   rgba(255,255,255,0.08),
+                inset  1px 0   0   rgba(255,255,255,0.40),
+                inset -1px 0   0   rgba(255,255,255,0.14),
+                0 0 0 0.5px        rgba(255,255,255,0.28),
+                0 10px 30px        rgba(0,0,0,0.38),
+                0 3px 10px         rgba(0,0,0,0.22),
+                0 0 22px           rgba(140,180,255,0.22);
         }
 
         .xiv-fb-btn:active {
-            transform: scale(0.96);
+            transform: scale(0.95);
+            transition: transform 0.10s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.10s ease;
+            box-shadow:
+                inset 0  1.5px 0  rgba(255,255,255,0.75),
+                inset 0 -1.5px 0  rgba(255,255,255,0.06),
+                inset  1px 0   0  rgba(255,255,255,0.30),
+                inset -1px 0   0  rgba(255,255,255,0.10),
+                0 0 0 0.5px       rgba(255,255,255,0.18),
+                0 3px 10px        rgba(0,0,0,0.25);
         }
 
         .xiv-fb-btn[data-loading="1"] {
             pointer-events: none;
             opacity: 0.8;
+        }
+
+        /* ── Icon ────────────────────────────────────── */
+        .xiv-btn-icon {
+            position: relative;
+            z-index: 6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 50% !important;
+            height: 50% !important;
+            color: rgba(255, 255, 255, 0.96);
+            filter: drop-shadow(0 0 4px rgba(0,0,0,0.65)) drop-shadow(0 1px 3px rgba(0,0,0,0.50));
+            transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.35s ease;
+            pointer-events: none;
+        }
+
+        .xiv-fb-btn:hover .xiv-btn-icon {
+            transform: scale(1.08) translateY(-1px);
+            filter: drop-shadow(0 0 7px rgba(180,210,255,0.70)) drop-shadow(0 2px 4px rgba(0,0,0,0.55));
+        }
+
+        .xiv-btn-icon svg {
+            width: 100% !important;
+            height: 100% !important;
+            display: block !important;
+            fill: none !important;
+            overflow: visible !important;
+        }
+
+        /* ── Inner glass layers ──────────────────────── */
+        .xiv-glass-lens {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: radial-gradient(circle at 72% 56%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.06) 45%, rgba(180,200,255,0.04) 80%, rgba(0,0,0,0) 100%);
+            pointer-events: none;
+            z-index: 1;
+        }
+        .xiv-glass-scatter {
+            position: absolute;
+            inset: 2px;
+            border-radius: 50%;
+            background: radial-gradient(ellipse 60% 50% at 38% 40%, rgba(255,255,255,0.09) 0%, transparent 65%);
+            pointer-events: none;
+            z-index: 2;
+        }
+        .xiv-glass-chroma {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: radial-gradient(ellipse 100% 100% at 50% 50%, transparent 62%, rgba(80,200,255,0.09) 74%, rgba(255,80,100,0.07) 84%, transparent 92%);
+            pointer-events: none;
+            z-index: 3;
+        }
+        .xiv-glass-rim {
+            position: absolute;
+            bottom: 0; left: 10%; right: 10%;
+            height: 40%;
+            background: radial-gradient(ellipse 80% 100% at 50% 115%, rgba(255,255,255,0.26) 0%, rgba(255,255,255,0.08) 45%, transparent 70%);
+            border-radius: 0 0 50% 50%;
+            pointer-events: none;
+            z-index: 4;
+        }
+
+        /* ── Ripple ──────────────────────────────────── */
+        .xiv-glass-ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.28);
+            transform: scale(0);
+            animation: xiv-ripple 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            pointer-events: none;
+            z-index: 7;
+        }
+        @keyframes xiv-ripple {
+            to { transform: scale(2.8); opacity: 0; }
         }
 
         @keyframes xiv-spin {
@@ -267,31 +411,81 @@
     }
 
     // ---------- UI Interactions ----------
-    async function executeWithVisualFeedback(btn, baseIcon, actionFn, showSuccess = true) {
+    async function executeWithVisualFeedback(btn, iconEl, baseIconString, actionFn, showSuccess = true) {
         if (btn.dataset.loading === "1") return;
 
         btn.dataset.loading = "1";
-        btn.replaceChildren(createIconElement(ICONS.spinner));
+        iconEl.replaceChildren(createIconElement(ICONS.spinner));
 
         try {
             await actionFn();
             if (showSuccess) {
-                btn.replaceChildren(createIconElement(ICONS.check));
+                iconEl.replaceChildren(createIconElement(ICONS.check));
             } else {
-                btn.replaceChildren(createIconElement(baseIcon));
+                iconEl.replaceChildren(createIconElement(baseIconString));
             }
         } catch (error) {
             console.error("[Facebook Media Extractor] Action failed:", error);
-            btn.replaceChildren(createIconElement(baseIcon));
+            iconEl.replaceChildren(createIconElement(baseIconString));
         } finally {
             if (showSuccess) {
                 setTimeout(() => {
                     delete btn.dataset.loading;
-                    btn.replaceChildren(createIconElement(baseIcon));
+                    iconEl.replaceChildren(createIconElement(baseIconString));
                 }, CONFIG.ui.successDurationMs);
             } else {
                 delete btn.dataset.loading;
             }
+        }
+    }
+
+    function createGlassButton(title, iconString, onClickAction) {
+        const btn = document.createElement('div');
+        btn.className = 'xiv-fb-btn';
+        btn.title = title;
+
+        const lens = document.createElement('div');
+        lens.className = 'xiv-glass-lens';
+        const scatter = document.createElement('div');
+        scatter.className = 'xiv-glass-scatter';
+        const chroma = document.createElement('div');
+        chroma.className = 'xiv-glass-chroma';
+        const rim = document.createElement('div');
+        rim.className = 'xiv-glass-rim';
+
+        const iconEl = document.createElement('span');
+        iconEl.className = 'xiv-btn-icon';
+        iconEl.appendChild(createIconElement(iconString));
+
+        btn.append(lens, scatter, chroma, rim, iconEl);
+
+        btn.addEventListener('pointerdown', function (e) {
+            const r = btn.getBoundingClientRect();
+            const size = Math.max(r.width, r.height);
+            const rpl = document.createElement('div');
+            rpl.className = 'xiv-glass-ripple';
+            rpl.style.cssText = `width:${size}px; height:${size}px; left:${e.clientX - r.left - size / 2}px; top:${e.clientY - r.top - size / 2}px;`;
+            btn.appendChild(rpl);
+            rpl.addEventListener('animationend', () => rpl.remove());
+        });
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation(); e.preventDefault();
+            onClickAction(btn, iconEl);
+        });
+
+        return btn;
+    }
+
+    function setupHoverContext(parentEl, containerEl, isStory) {
+        if (isStory) return; // Story buttons animate explicitly on mount and stay visible
+
+        parentEl.addEventListener('mouseenter', () => containerEl.classList.add('xiv-visible'));
+        parentEl.addEventListener('mouseleave', () => containerEl.classList.remove('xiv-visible'));
+
+        // Handle the case where the mouse is already resting inside the container on initial render
+        if (parentEl.matches(':hover')) {
+            containerEl.classList.add('xiv-visible');
         }
     }
 
@@ -307,26 +501,16 @@
         if (isStory) container.classList.add('xiv-story-mode');
 
         // Open Button
-        const openBtn = document.createElement('div');
-        openBtn.className = 'xiv-fb-btn';
-        openBtn.title = 'Open High-Res Image';
-        openBtn.appendChild(createIconElement(ICONS.open));
-        openBtn.addEventListener('mousedown', (e) => {
-            e.stopPropagation(); e.preventDefault();
-            executeWithVisualFeedback(openBtn, ICONS.open, async () => {
+        const openBtn = createGlassButton('Open High-Res Image', ICONS.open, (btn, iconEl) => {
+            executeWithVisualFeedback(btn, iconEl, ICONS.open, async () => {
                 const url = await getHighResUrl(imgEl);
                 if (url) window.open(url, '_blank', 'noopener,noreferrer');
             }, false);
         });
 
         // Download Button
-        const dlBtn = document.createElement('div');
-        dlBtn.className = 'xiv-fb-btn';
-        dlBtn.title = 'Download Image';
-        dlBtn.appendChild(createIconElement(ICONS.download));
-        dlBtn.addEventListener('mousedown', (e) => {
-            e.stopPropagation(); e.preventDefault();
-            executeWithVisualFeedback(dlBtn, ICONS.download, async () => {
+        const dlBtn = createGlassButton('Download Image', ICONS.download, (btn, iconEl) => {
+            executeWithVisualFeedback(btn, iconEl, ICONS.download, async () => {
                 const url = await getHighResUrl(imgEl);
                 if (url) await downloadImage(url, filename);
             });
@@ -342,16 +526,7 @@
             parent.appendChild(container);
         }
 
-        // Handle hover hook for standard photos
-        if (!isStory) {
-            // Force a DOM reflow BEFORE adding the hover class.
-            // This prevents the browser from skipping the entrance transition
-            // if the user is already resting their mouse on the image area during load.
-            void container.offsetWidth;
-
-            parent.classList.add('xiv-photo-parent');
-        }
-
+        setupHoverContext(parent, container, isStory);
         processedElements.add(imgEl);
     }
 

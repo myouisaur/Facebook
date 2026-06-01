@@ -2,7 +2,7 @@
 // @name         [Facebook] Post Navigation
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://www.facebook.com/favicon.ico
-// @version      3.1
+// @version      4.0
 // @description  Adds a floating navigation panel to instantly snap or seamlessly scroll between posts across the Facebook home feed, groups, and profiles.
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -33,38 +33,29 @@
             posts: 'div[data-pagelet^="FeedUnit_"], div[aria-posinset], div[role="article"]',
         },
 
-        offsets: {
-            home: 60,       // Standard top nav bar + padding
-            contextual: 120 // Top nav + secondary sticky tab bars
-        },
-
-        thresholds: {
-            minWidth: 300,
-            minHeight: 250 // Bypasses the "Create Post" box and small carousels
-        },
+        offsets: { home: 60, contextual: 120 },
+        thresholds: { minWidth: 300, minHeight: 250 },
 
         timing: {
-            throttle: 100,  // Keyboard nav throttle (ms)
-            polling: 1000   // Featherweight visibility heartbeat (ms)
+            throttle: 150,    // Keyboard nav throttle (ms)
+            cacheLife: 500    // Micro-cache lifespan for rapid-fire clicks (ms)
         },
 
         layout: {
-            anchorBuffer: 5, // Target snapping safety buffer (px)
-            topOfPage: 20    // ScrollY value considered "Top"
+            anchorBuffer: 5,
+            topOfPage: 20
         },
 
         animation: {
             easeMultiplier: 0.3,
             minDuration: 200,
             maxDuration: 400,
-            snapThreshold: 5
+            snapThreshold: 5,
+            mathThrottle: 5   // Only recalculate layout every N frames
         },
 
         prefix: 'tm-fb-nav',
-
-        colors: {
-            brand: '#0866ff',
-        },
+        colors: { brand: '#0866ff' },
 
         icons: {
             up: 'M18 15l-6-6-6 6',
@@ -72,27 +63,14 @@
         }
     };
 
-    const LOG = {
-        info: (msg, ...args) => CONFIG.DEBUG && console.log(`[FB Nav] ${msg}`, ...args),
-        warn: (msg, ...args) => CONFIG.DEBUG && console.warn(`[FB Nav] ${msg}`, ...args),
-        error: (msg, ...args) => console.error(`[FB Nav] ${msg}`, ...args)
-    };
-
     const SETTINGS = {
         get smoothScroll() {
-            try {
-                return GM_getValue('smoothScroll', true);
-            } catch (e) {
-                LOG.error('Storage read failed', e);
-                return true;
-            }
+            try { return GM_getValue('smoothScroll', true); }
+            catch (e) { return true; }
         },
         set smoothScroll(val) {
-            try {
-                GM_setValue('smoothScroll', val);
-            } catch (e) {
-                LOG.error('Storage write failed', e);
-            }
+            try { GM_setValue('smoothScroll', val); }
+            catch (e) { /* silent fail */ }
         }
     };
 
@@ -105,10 +83,7 @@
             right: clamp(12px, 2vw, 24px) !important;
             top: 50% !important;
             transform: translateY(-50%) !important;
-
-            /* Hidden State (Default) */
             display: none !important;
-
             flex-direction: column !important;
             align-items: center !important;
             gap: clamp(8px, 1.5vh, 16px) !important;
@@ -116,10 +91,7 @@
             pointer-events: none !important;
         }
 
-        /* Visible State - Instant Toggle */
-        .${CONFIG.prefix}-container.is-visible {
-            display: flex !important;
-        }
+        .${CONFIG.prefix}-container.is-visible { display: flex !important; }
 
         .${CONFIG.prefix}-btn {
             pointer-events: auto !important;
@@ -165,32 +137,7 @@
     }
 
     // ============================================================================
-    // 3. UTILITIES & DOM BUILDERS
-    // ============================================================================
-
-    const DOM = {
-        create(tag, className, options = {}) {
-            const el = document.createElement(tag);
-            if (className) el.className = className;
-            Object.entries(options).forEach(([key, value]) => {
-                if (key === 'textContent') el.textContent = value;
-                else if (key === 'dataset') Object.assign(el.dataset, value);
-                else el.setAttribute(key, value);
-            });
-            return el;
-        },
-        createSVG(pathData) {
-            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.setAttribute('viewBox', '0 0 24 24');
-            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path.setAttribute('d', pathData);
-            svg.appendChild(path);
-            return svg;
-        }
-    };
-
-    // ============================================================================
-    // 4. LOGIC & NAV ENGINE
+    // 3. LOGIC & NAV ENGINE
     // ============================================================================
 
     class NavigationManager {
@@ -201,10 +148,16 @@
             this.lastNavTime = 0;
             this.scrollAnimFrame = null;
 
+            this.isAwake = false;
+
+            // Rapid-fire micro-cache
+            this.microCache = null;
+            this.cacheTimer = null;
+
             this.registerMenu();
             this.buildUI();
             this.attachEvents();
-            this.updateVisibility();
+            this.checkState();
         }
 
         registerMenu() {
@@ -216,11 +169,47 @@
             }
         }
 
+        /**
+         * Evaluates the current URL path.
+         */
         isPageValid() {
             const pathAndQuery = window.location.pathname + window.location.search;
-            // Blacklist permalinks, single photo views, reels, and messages to prevent UI ghosting
-            const blacklistRegex = /\/(photo|photo\.php|photos|permalink|posts|story\.php|stories|reel|messages)(\/|\?|$)/i;
+            const blacklistRegex = /\/(photo|photo\.php|photos|permalink|posts|story\.php|stories|reel|watch|messages|video|videos|gaming)(\/|\?|$)/i;
             return !blacklistRegex.test(pathAndQuery);
+        }
+
+        /**
+         * Core route state manager. Triggers on DOM <title> changes.
+         */
+        checkState() {
+            if (!this.isPageValid()) {
+                if (this.isAwake) this.sleep();
+            } else {
+                if (!this.isAwake) this.wakeUp();
+            }
+        }
+
+        sleep() {
+            this.isAwake = false;
+            this.currentTargetNode = null;
+            this.microCache = null;
+
+            if (this.scrollAnimFrame) {
+                cancelAnimationFrame(this.scrollAnimFrame);
+                this.scrollAnimFrame = null;
+            }
+
+            if (this.containerEl && this.containerEl.classList.contains('is-visible')) {
+                this.containerEl.classList.remove('is-visible');
+            }
+        }
+
+        wakeUp() {
+            this.isAwake = true;
+            const posts = this.getFreshPosts();
+            if (posts.length > 0 && this.containerEl && !this.containerEl.classList.contains('is-visible')) {
+                this.containerEl.classList.add('is-visible');
+            }
         }
 
         getCurrentOffset() {
@@ -232,47 +221,44 @@
         }
 
         /**
-         * JIT (Just-In-Time) DOM Engine
-         * Evaluates the active document strictly at the moment of a button press.
-         * Ensures virtualized or newly injected FB posts are perfectly mapped.
+         * Fetches valid posts, utilizing a micro-cache to prevent CPU thrashing during rapid clicks.
          */
         getFreshPosts() {
-            try {
-                const nodes = document.querySelectorAll(CONFIG.selectors.posts);
-                const validNodes = [];
-                let lastParent = null;
+            if (!this.isAwake) return [];
 
-                for (let i = 0; i < nodes.length; i++) {
-                    const el = nodes[i];
+            // Return cached DOM array if user is mashing the button
+            if (this.microCache) return this.microCache;
 
-                    // Native containment check to skip nested inner-posts (e.g., carousels, shares)
-                    if (lastParent && lastParent.contains(el)) continue;
+            const nodes = document.querySelectorAll(CONFIG.selectors.posts);
+            const validNodes = [];
+            let lastParent = null;
 
-                    const isNestedItem = el.parentElement && el.parentElement.closest(CONFIG.selectors.posts) !== null;
-                    if (isNestedItem) continue;
+            for (let i = 0; i < nodes.length; i++) {
+                const el = nodes[i];
 
-                    const rect = el.getBoundingClientRect();
+                if (lastParent && lastParent.contains(el)) continue;
 
-                    // Dimensions natively filter out detached elements (0x0 rect) and the Composer box
-                    if (rect.height > CONFIG.thresholds.minHeight && rect.width > CONFIG.thresholds.minWidth) {
-                        validNodes.push(el);
-                        lastParent = el;
-                    }
+                const isNestedItem = el.parentElement && el.parentElement.closest(CONFIG.selectors.posts) !== null;
+                if (isNestedItem) continue;
+
+                const rect = el.getBoundingClientRect();
+
+                if (rect.height > CONFIG.thresholds.minHeight && rect.width > CONFIG.thresholds.minWidth) {
+                    validNodes.push(el);
+                    lastParent = el;
                 }
-
-                // document.querySelectorAll inherently returns elements in strict physical DOM order.
-                // We do NOT sort by coordinates here, preventing FB layout shifts from scrambling the array.
-                return validNodes;
-            } catch (e) {
-                LOG.error('Error fetching JIT posts', e);
-                return [];
             }
+
+            // Build cache and start self-destruct timer
+            this.microCache = validNodes;
+            clearTimeout(this.cacheTimer);
+            this.cacheTimer = setTimeout(() => { this.microCache = null; }, CONFIG.timing.cacheLife);
+
+            return validNodes;
         }
 
         animateScrollTo(target) {
-            if (this.scrollAnimFrame) {
-                cancelAnimationFrame(this.scrollAnimFrame);
-            }
+            if (this.scrollAnimFrame) cancelAnimationFrame(this.scrollAnimFrame);
 
             const getTargetY = () => {
                 if (typeof target === 'number') return target;
@@ -280,11 +266,11 @@
             };
 
             const startY = window.scrollY || window.pageYOffset;
-            const initialTargetY = getTargetY();
-            const distance = initialTargetY - startY;
+            let dynamicTargetY = getTargetY();
+            const distance = dynamicTargetY - startY;
 
             if (Math.abs(distance) < CONFIG.animation.snapThreshold) {
-                window.scrollTo(0, initialTargetY);
+                window.scrollTo(0, dynamicTargetY);
                 this.scrollAnimFrame = null;
                 return;
             }
@@ -295,23 +281,29 @@
             );
 
             let startTime = null;
+            let frameCount = 0;
 
             const step = (currentTime) => {
+                if (!this.isAwake) { this.scrollAnimFrame = null; return; }
                 if (!startTime) startTime = currentTime;
+
                 const elapsed = currentTime - startTime;
                 const progress = Math.min(elapsed / duration, 1);
-
                 const ease = progress * (2 - progress);
 
-                // Recalculates dynamically every frame to act as a homing missile if FB shifts the post
-                const dynamicDistance = getTargetY() - startY;
+                // THROTTLED MATH: Only recalculate layout geometry every N frames
+                if (frameCount % CONFIG.animation.mathThrottle === 0) {
+                    dynamicTargetY = getTargetY();
+                }
+                frameCount++;
 
+                const dynamicDistance = dynamicTargetY - startY;
                 window.scrollTo(0, startY + (dynamicDistance * ease));
 
                 if (progress < 1) {
                     this.scrollAnimFrame = requestAnimationFrame(step);
                 } else {
-                    window.scrollTo(0, getTargetY());
+                    window.scrollTo(0, dynamicTargetY);
                     this.scrollAnimFrame = null;
                 }
             };
@@ -335,6 +327,8 @@
         }
 
         navigate(direction) {
+            if (!this.isAwake) return false;
+
             const now = Date.now();
             if (now - this.lastNavTime < CONFIG.timing.throttle) return false;
             this.lastNavTime = now;
@@ -344,19 +338,14 @@
 
             let targetNode = null;
 
-            // SEQUENCE LOCK: Ensures rapid button mashing perfectly steps through the array sequentially
-            // even if the user outpaces the scroll animation.
-            if (this.currentTargetNode) {
+            if (this.currentTargetNode && document.body.contains(this.currentTargetNode)) {
                 const currentIndex = posts.indexOf(this.currentTargetNode);
                 if (currentIndex !== -1) {
                     const nextIndex = direction === 'down' ? currentIndex + 1 : currentIndex - 1;
-                    if (posts[nextIndex]) {
-                        targetNode = posts[nextIndex];
-                    }
+                    if (posts[nextIndex]) targetNode = posts[nextIndex];
                 }
             }
 
-            // FALLBACK / INITIAL NAV: Calculate using live physical geometry
             if (!targetNode) {
                 const currentOffset = this.getCurrentOffset();
                 const anchorDown = currentOffset + CONFIG.layout.anchorBuffer;
@@ -367,7 +356,6 @@
                 } else if (direction === 'up') {
                     targetNode = [...posts].reverse().find(post => post.getBoundingClientRect().top < anchorUp);
 
-                    // If no valid post sits above us, snap to the absolute top of the page (Stories/Composer)
                     if (!targetNode && window.scrollY > (CONFIG.layout.topOfPage / 2)) {
                         this.currentTargetNode = null;
                         if (SETTINGS.smoothScroll) this.animateScrollTo(0);
@@ -384,63 +372,42 @@
             return false;
         }
 
-        updateVisibility() {
-            if (!this.containerEl) return;
-
-            // Only hide the UI if the URL explicitly invalidates it, or the feed is completely barren.
-            // Dropped to < 1 to prevent vanishing acts during SPA router hiccups.
-            if (!this.isPageValid() || document.querySelectorAll(CONFIG.selectors.posts).length < 1) {
-                if (this.containerEl.classList.contains('is-visible')) {
-                    this.containerEl.classList.remove('is-visible');
-                }
-            } else {
-                if (!this.containerEl.classList.contains('is-visible')) {
-                    this.containerEl.classList.add('is-visible');
-                }
-            }
-        }
-
         buildUI() {
-            this.containerEl = DOM.create('div', `${CONFIG.prefix}-container`, {
-                id: `${CONFIG.prefix}-main`,
-                'aria-label': 'Post Navigation'
-            });
+            this.containerEl = document.createElement('div');
+            this.containerEl.className = `${CONFIG.prefix}-container`;
+            this.containerEl.id = `${CONFIG.prefix}-main`;
+            this.containerEl.setAttribute('aria-label', 'Post Navigation');
 
-            const btnUp = DOM.create('button', `${CONFIG.prefix}-btn`, {
-                'aria-label': 'Previous Post',
-                title: 'Previous Post (Arrow Up)'
-            });
-            btnUp.appendChild(DOM.createSVG(CONFIG.icons.up));
-            btnUp.addEventListener('click', (e) => { e.preventDefault(); this.navigate('up'); });
+            this.containerEl.innerHTML = `
+                <button class="${CONFIG.prefix}-btn" id="${CONFIG.prefix}-up" aria-label="Previous Post" title="Previous Post (Arrow Up)">
+                    <svg viewBox="0 0 24 24"><path d="${CONFIG.icons.up}"></path></svg>
+                </button>
+                <button class="${CONFIG.prefix}-btn" id="${CONFIG.prefix}-down" aria-label="Next Post" title="Next Post (Arrow Down)">
+                    <svg viewBox="0 0 24 24"><path d="${CONFIG.icons.down}"></path></svg>
+                </button>
+            `;
 
-            const btnDown = DOM.create('button', `${CONFIG.prefix}-btn`, {
-                'aria-label': 'Next Post',
-                title: 'Next Post (Arrow Down)'
-            });
-            btnDown.appendChild(DOM.createSVG(CONFIG.icons.down));
-            btnDown.addEventListener('click', (e) => { e.preventDefault(); this.navigate('down'); });
+            this.containerEl.querySelector(`#${CONFIG.prefix}-up`).addEventListener('click', (e) => { e.preventDefault(); this.navigate('up'); });
+            this.containerEl.querySelector(`#${CONFIG.prefix}-down`).addEventListener('click', (e) => { e.preventDefault(); this.navigate('down'); });
 
-            this.containerEl.appendChild(btnUp);
-            this.containerEl.appendChild(btnDown);
             document.body.appendChild(this.containerEl);
         }
 
         attachEvents() {
-            // Abort scroll locks if the user physically intervenes via mouse or touch
             const abortScroll = () => {
                 if (this.scrollAnimFrame) {
                     cancelAnimationFrame(this.scrollAnimFrame);
                     this.scrollAnimFrame = null;
                 }
-                // Break the mathematical sequence lock, forcing the next press to use fresh spatial geometry
                 this.currentTargetNode = null;
             };
-            window.addEventListener('wheel', abortScroll, { passive: true });
-            window.addEventListener('touchstart', abortScroll, { passive: true });
+
+            // Consolidate manual override listeners
+            ['wheel', 'touchstart'].forEach(evt => window.addEventListener(evt, abortScroll, { passive: true }));
 
             if (CONFIG.enableKeyboard) {
                 window.addEventListener('keydown', (e) => {
-                    if (e.repeat) return;
+                    if (!this.isAwake || e.repeat) return;
 
                     const activeEl = document.activeElement;
                     if (activeEl) {
@@ -450,14 +417,22 @@
                         const isRichText = activeEl.isContentEditable || e.target.closest('[contenteditable="true"]');
                         const isAriaInput = role === 'textbox' || role === 'combobox';
 
-                        if (isTextInput || isRichText || isAriaInput) return;
+                        if (isTextInput || isRichText || isAriaInput) {
+                            // INPUT THEFT: If the box is completely empty, blur it and let the user scroll anyway
+                            const val = activeEl.value || activeEl.textContent;
+                            if (!val.trim() && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                                activeEl.blur();
+                            } else {
+                                return; // User is actually typing, back off
+                            }
+                        }
                     }
 
                     if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
 
                     let direction = null;
-                    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') direction = 'up';
-                    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') direction = 'down';
+                    if (e.key === 'ArrowUp') direction = 'up';
+                    if (e.key === 'ArrowDown') direction = 'down';
 
                     if (direction && this.navigate(direction)) {
                         e.preventDefault();
@@ -465,11 +440,11 @@
                 });
             }
 
-            // Featherweight background heartbeat to check if we navigated to a photo or permalink
-            setInterval(() => {
-                if (document.hidden) return;
-                this.updateVisibility();
-            }, CONFIG.timing.polling);
+            // Zero-CPU Routing: Watch Facebook's <head> tag for <title> changes
+            const head = document.querySelector('head');
+            if (head) {
+                new MutationObserver(() => this.checkState()).observe(head, { childList: true, subtree: true });
+            }
         }
     }
 

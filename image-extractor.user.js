@@ -2,7 +2,7 @@
 // @name         [Facebook] Media Extractor
 // @namespace    https://github.com/myouisaur/Facebook
 // @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      3.9
+// @version      4.1
 // @description  Adds open and download buttons to Facebook images in photo and story views.
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -50,54 +50,57 @@
         check: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
     };
 
-    // ---------- Styling ----------
+    // ---------- Styling (Liquid Glass v2) ----------
     GM_addStyle(`
-        .xiv-fb-btn-container {
+        /* ── Container ──────────────────────────────── */
+        .xiv-btn-container {
             position: absolute !important;
             bottom: clamp(1rem, 2.5vw, 1.5rem);
             left: 50%;
-            /* Hidden State: Shifted down and scaled slightly for a float-in entrance */
-            transform: translateX(-50%) translateY(16px) scale(0.9);
-            display: flex !important;
-            gap: 12px;
+            transform: translateX(-50%);
             z-index: 999999 !important;
-            opacity: 0;
+            display: flex !important;
+            gap: 8px;
             pointer-events: none;
-            /* Springy easing creates a premium pop-up effect */
-            transition: opacity 0.3s ease, transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+            /* Bug fix: Transition visibility to allow child elements to handle their own opacity fade */
+            visibility: hidden;
+            transition: visibility 0s linear 0.3s;
         }
 
-        .xiv-fb-btn-container.xiv-visible {
-            opacity: 1 !important;
-            /* Visible State: Rests at baseline position */
-            transform: translateX(-50%) translateY(0) scale(1) !important;
-            pointer-events: auto !important;
+        /* Active/Visible states */
+        .xiv-btn-container.xiv-visible,
+        .xiv-btn-container.xiv-story-mode {
+            visibility: visible;
+            pointer-events: auto;
+            transition: visibility 0s;
         }
 
-        .xiv-fb-btn-container.xiv-story-mode {
-            opacity: 1 !important;
-            pointer-events: auto !important;
-            transform: translateX(-50%) translateY(0) scale(1);
-            /* Stories use an explicit animation on load since they don't rely on hover */
-            animation: xiv-mount-spring 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        /* Subtle radial shadow behind the container to help it read on any background */
+        .xiv-btn-container::before {
+            content: '';
+            position: absolute;
+            top: -20px; right: -25px; bottom: -20px; left: -25px;
+            z-index: -1;
+            background: radial-gradient(ellipse at center, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0) 65%);
+            pointer-events: none;
+            border-radius: 50%;
+
+            /* Handles its own opacity decoupled from container */
+            opacity: 0;
+            transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        @keyframes xiv-mount-spring {
-            0% {
-                opacity: 0;
-                transform: translateX(-50%) translateY(16px) scale(0.9);
-            }
-            100% {
-                opacity: 1;
-                transform: translateX(-50%) translateY(0) scale(1);
-            }
+        .xiv-btn-container.xiv-visible::before,
+        .xiv-btn-container.xiv-story-mode::before {
+            opacity: 1;
         }
 
-        /* ── Liquid Glass Button Shell ────────────────────────────── */
-        .xiv-fb-btn {
+        /* ── Button shell ────────────────────────────── */
+        .xiv-action-btn {
             position: relative;
-            width: clamp(2rem, 3vw, 2.25rem);
-            height: clamp(2rem, 3vw, 2.25rem);
+            width: 35px;
+            height: 35px;
             border-radius: 50%;
             border: none;
             outline: none;
@@ -108,9 +111,18 @@
             justify-content: center;
             flex-shrink: 0;
             color: rgba(255, 255, 255, 0.96);
+
+            /* Hardware acceleration & direct opacity transition to prevent Chromium backdrop-filter snapping */
+            opacity: 0;
+            will-change: transform, opacity;
+            transform: translateZ(0);
+
+            /* Frosted glass base */
             background: rgba(255, 255, 255, 0.14);
             backdrop-filter: blur(24px) saturate(180%) brightness(1.1);
             -webkit-backdrop-filter: blur(24px) saturate(180%) brightness(1.1);
+
+            /* Layered inset highlights + drop shadow */
             box-shadow:
                 inset 0  1.5px 0   rgba(255,255,255,0.75),
                 inset 0 -1.5px 0   rgba(255,255,255,0.06),
@@ -119,13 +131,21 @@
                 0 0 0 0.5px        rgba(255,255,255,0.20),
                 0 6px 20px         rgba(0,0,0,0.32),
                 0 2px  6px         rgba(0,0,0,0.20);
+
             transition:
-                transform       0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
-                box-shadow      0.35s ease,
-                background      0.35s ease;
+                opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.35s ease,
+                background 0.35s ease;
         }
 
-        .xiv-fb-btn::before {
+        /* Button fade-in trigger */
+        .xiv-btn-container.xiv-visible .xiv-action-btn,
+        .xiv-btn-container.xiv-story-mode .xiv-action-btn {
+            opacity: 1;
+        }
+
+        /* ── Gradient border ring (mask-composite trick) ── */
+        .xiv-action-btn::before {
             content: '';
             position: absolute;
             inset: 0;
@@ -147,7 +167,8 @@
             transition: background 0.35s ease;
         }
 
-        .xiv-fb-btn::after {
+        /* ── Top glare / specular highlight ── */
+        .xiv-action-btn::after {
             content: '';
             position: absolute;
             top: 0; left: 0; right: 0;
@@ -165,8 +186,8 @@
             transition: background 0.35s ease;
         }
 
-        .xiv-fb-btn:hover {
-            transform: scale(1.075);
+        /* ── Hover state ── */
+        .xiv-action-btn:hover {
             background: rgba(255, 255, 255, 0.22);
             backdrop-filter: blur(32px) saturate(210%) brightness(1.18);
             -webkit-backdrop-filter: blur(32px) saturate(210%) brightness(1.18);
@@ -181,9 +202,11 @@
                 0 0 22px           rgba(140,180,255,0.22);
         }
 
-        .xiv-fb-btn:active {
-            transform: scale(0.95);
-            transition: transform 0.10s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.10s ease;
+        /* ── Active / pressed state ── */
+        .xiv-action-btn:active {
+            transition:
+                opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.10s ease;
             box-shadow:
                 inset 0  1.5px 0  rgba(255,255,255,0.75),
                 inset 0 -1.5px 0  rgba(255,255,255,0.06),
@@ -193,40 +216,36 @@
                 0 3px 10px        rgba(0,0,0,0.25);
         }
 
-        .xiv-fb-btn[data-loading="1"] {
+        /* Loading State Override */
+        .xiv-action-btn[data-loading="1"] {
             pointer-events: none;
-            opacity: 0.8;
+            opacity: 0.8 !important;
         }
 
-        /* ── Icon ────────────────────────────────────── */
+        /* ── Icon wrapper ── */
         .xiv-btn-icon {
             position: relative;
             z-index: 6;
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 50% !important;
-            height: 50% !important;
             color: rgba(255, 255, 255, 0.96);
             filter: drop-shadow(0 0 4px rgba(0,0,0,0.65)) drop-shadow(0 1px 3px rgba(0,0,0,0.50));
-            transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.35s ease;
+            transition: filter 0.35s ease;
             pointer-events: none;
         }
 
-        .xiv-fb-btn:hover .xiv-btn-icon {
-            transform: scale(1.08) translateY(-1px);
+        .xiv-action-btn:hover .xiv-btn-icon {
             filter: drop-shadow(0 0 7px rgba(180,210,255,0.70)) drop-shadow(0 2px 4px rgba(0,0,0,0.55));
         }
 
         .xiv-btn-icon svg {
-            width: 100% !important;
-            height: 100% !important;
+            width: 17px !important;
+            height: 17px !important;
             display: block !important;
-            fill: none !important;
-            overflow: visible !important;
         }
 
-        /* ── Inner glass layers ──────────────────────── */
+        /* ── INNER GLASS LAYERS ── */
         .xiv-glass-lens {
             position: absolute;
             inset: 0;
@@ -237,6 +256,7 @@
             pointer-events: none;
             z-index: 1;
         }
+
         .xiv-glass-scatter {
             position: absolute;
             inset: 2px;
@@ -245,6 +265,7 @@
             pointer-events: none;
             z-index: 2;
         }
+
         .xiv-glass-chroma {
             position: absolute;
             inset: 0;
@@ -253,6 +274,7 @@
             pointer-events: none;
             z-index: 3;
         }
+
         .xiv-glass-rim {
             position: absolute;
             bottom: 0; left: 10%; right: 10%;
@@ -263,7 +285,7 @@
             z-index: 4;
         }
 
-        /* ── Ripple ──────────────────────────────────── */
+        /* ── Ripple ── */
         .xiv-glass-ripple {
             position: absolute;
             border-radius: 50%;
@@ -277,11 +299,11 @@
             to { transform: scale(2.8); opacity: 0; }
         }
 
-        @keyframes xiv-spin {
+        @keyframes xiv-spin-anim {
             100% { transform: rotate(360deg); }
         }
         .xiv-spin {
-            animation: xiv-spin 1s linear infinite;
+            animation: xiv-spin-anim 0.9s linear infinite;
         }
     `);
 
@@ -413,7 +435,6 @@
     // ---------- UI Interactions ----------
     async function executeWithVisualFeedback(btn, iconEl, baseIconString, actionFn, showSuccess = true) {
         if (btn.dataset.loading === "1") return;
-
         btn.dataset.loading = "1";
         iconEl.replaceChildren(createIconElement(ICONS.spinner));
 
@@ -441,7 +462,7 @@
 
     function createGlassButton(title, iconString, onClickAction) {
         const btn = document.createElement('div');
-        btn.className = 'xiv-fb-btn';
+        btn.className = 'xiv-action-btn';
         btn.title = title;
 
         const lens = document.createElement('div');
@@ -478,12 +499,11 @@
     }
 
     function setupHoverContext(parentEl, containerEl, isStory) {
-        if (isStory) return; // Story buttons animate explicitly on mount and stay visible
+        if (isStory) return;
 
         parentEl.addEventListener('mouseenter', () => containerEl.classList.add('xiv-visible'));
         parentEl.addEventListener('mouseleave', () => containerEl.classList.remove('xiv-visible'));
 
-        // Handle the case where the mouse is already resting inside the container on initial render
         if (parentEl.matches(':hover')) {
             containerEl.classList.add('xiv-visible');
         }
@@ -492,15 +512,13 @@
     // ---------- DOM Injection ----------
     function constructOverlay(imgEl, filename, isStory) {
         if (!imgEl || processedElements.has(imgEl)) return;
-
         const parent = imgEl.parentElement;
         if (!parent) return;
 
         const container = document.createElement('div');
-        container.className = 'xiv-fb-btn-container';
+        container.className = 'xiv-btn-container';
         if (isStory) container.classList.add('xiv-story-mode');
 
-        // Open Button
         const openBtn = createGlassButton('Open High-Res Image', ICONS.open, (btn, iconEl) => {
             executeWithVisualFeedback(btn, iconEl, ICONS.open, async () => {
                 const url = await getHighResUrl(imgEl);
@@ -508,7 +526,6 @@
             }, false);
         });
 
-        // Download Button
         const dlBtn = createGlassButton('Download Image', ICONS.download, (btn, iconEl) => {
             executeWithVisualFeedback(btn, iconEl, ICONS.download, async () => {
                 const url = await getHighResUrl(imgEl);
@@ -519,7 +536,6 @@
         container.appendChild(openBtn);
         container.appendChild(dlBtn);
 
-        // Safe DOM insertion
         if (imgEl.nextSibling) {
             parent.insertBefore(container, imgEl.nextSibling);
         } else {

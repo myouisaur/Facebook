@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         [Facebook] Media Extractor
 // @namespace    https://github.com/myouisaur/Facebook
-// @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      4.1
+// @icon         https://www.facebook.com/favicon.ico
+// @version      4.2
 // @description  Adds open and download buttons to Facebook images in photo and story views.
 // @author       Xiv
 // @match        *://*.facebook.com/*
 // @noframes
 // @grant        GM_addStyle
+// @grant        GM_openInTab
 // @updateURL    https://myouisaur.github.io/Facebook/image-extractor.user.js
 // @downloadURL  https://myouisaur.github.io/Facebook/image-extractor.user.js
 // ==/UserScript==
@@ -50,7 +51,7 @@
         check: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
     };
 
-    // ---------- Styling (Liquid Glass v2) ----------
+    // ---------- Styling (Liquid Glass v2 + Morph Animations) ----------
     GM_addStyle(`
         /* ── Container ──────────────────────────────── */
         .xiv-btn-container {
@@ -229,6 +230,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            width: 17px;
+            height: 17px;
             color: rgba(255, 255, 255, 0.96);
             filter: drop-shadow(0 0 4px rgba(0,0,0,0.65)) drop-shadow(0 1px 3px rgba(0,0,0,0.50));
             transition: filter 0.35s ease;
@@ -239,9 +242,25 @@
             filter: drop-shadow(0 0 7px rgba(180,210,255,0.70)) drop-shadow(0 2px 4px rgba(0,0,0,0.55));
         }
 
-        .xiv-btn-icon svg {
-            width: 17px !important;
-            height: 17px !important;
+        /* ── Icon Morph Transitions ── */
+        .xiv-icon-inner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            transition: opacity 0.15s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform-origin: center;
+        }
+
+        .xiv-icon-inner.xiv-morphing {
+            opacity: 0;
+            transform: scale(0.25) rotate(-45deg);
+        }
+
+        .xiv-icon-inner svg {
+            width: 100% !important;
+            height: 100% !important;
             display: block !important;
         }
 
@@ -369,7 +388,7 @@
                     .then(blob => triggerDownload(blob, filename))
                     .then(resolve)
                     .catch(e => {
-                        window.open(url, '_blank', 'noopener,noreferrer');
+                        GM_openInTab(url, { active: false, insert: true, setParent: true });
                         resolve();
                     });
             }
@@ -393,18 +412,18 @@
                                 triggerDownload(blob, filename.replace(/\.(png|webp)$/i, '.jpg'));
                                 resolve();
                             } else {
-                                window.open(url, '_blank', 'noopener,noreferrer');
+                                GM_openInTab(url, { active: false, insert: true, setParent: true });
                                 resolve();
                             }
                         }, 'image/jpeg', CONFIG.img.jpegQuality);
                     } catch (e) {
                         console.warn("[Facebook Media Extractor] Canvas tainted, falling back to new tab.", e);
-                        window.open(url, '_blank', 'noopener,noreferrer');
+                        GM_openInTab(url, { active: false, insert: true, setParent: true });
                         resolve();
                     }
                 };
                 img.onerror = () => {
-                    window.open(url, '_blank', 'noopener,noreferrer');
+                    GM_openInTab(url, { active: false, insert: true, setParent: true });
                     resolve();
                 };
                 img.src = url;
@@ -416,7 +435,7 @@
                 .then(blob => triggerDownload(blob, filename))
                 .then(resolve)
                 .catch(() => {
-                    window.open(url, '_blank', 'noopener,noreferrer');
+                    GM_openInTab(url, { active: false, insert: true, setParent: true });
                     resolve();
                 });
         });
@@ -433,26 +452,43 @@
     }
 
     // ---------- UI Interactions ----------
+    async function swapIconSmoothly(iconEl, newSvgString) {
+        const inner = iconEl.querySelector('.xiv-icon-inner');
+        if (!inner) return;
+
+        return new Promise(resolve => {
+            inner.classList.add('xiv-morphing');
+            setTimeout(() => {
+                inner.replaceChildren(createIconElement(newSvgString));
+                // Force DOM reflow to restart animation from new state
+                void inner.offsetWidth;
+                inner.classList.remove('xiv-morphing');
+                setTimeout(resolve, 250); // Wait for morph-in transition to finish
+            }, 150); // Wait for morph-out transition to finish
+        });
+    }
+
     async function executeWithVisualFeedback(btn, iconEl, baseIconString, actionFn, showSuccess = true) {
         if (btn.dataset.loading === "1") return;
         btn.dataset.loading = "1";
-        iconEl.replaceChildren(createIconElement(ICONS.spinner));
+
+        await swapIconSmoothly(iconEl, ICONS.spinner);
 
         try {
             await actionFn();
             if (showSuccess) {
-                iconEl.replaceChildren(createIconElement(ICONS.check));
+                await swapIconSmoothly(iconEl, ICONS.check);
             } else {
-                iconEl.replaceChildren(createIconElement(baseIconString));
+                await swapIconSmoothly(iconEl, baseIconString);
             }
         } catch (error) {
             console.error("[Facebook Media Extractor] Action failed:", error);
-            iconEl.replaceChildren(createIconElement(baseIconString));
+            await swapIconSmoothly(iconEl, baseIconString);
         } finally {
             if (showSuccess) {
-                setTimeout(() => {
+                setTimeout(async () => {
+                    await swapIconSmoothly(iconEl, baseIconString);
                     delete btn.dataset.loading;
-                    iconEl.replaceChildren(createIconElement(baseIconString));
                 }, CONFIG.ui.successDurationMs);
             } else {
                 delete btn.dataset.loading;
@@ -474,9 +510,13 @@
         const rim = document.createElement('div');
         rim.className = 'xiv-glass-rim';
 
+        // Inner wrapper specifically for handling the morphing animations cleanly
         const iconEl = document.createElement('span');
         iconEl.className = 'xiv-btn-icon';
-        iconEl.appendChild(createIconElement(iconString));
+        const innerIconEl = document.createElement('div');
+        innerIconEl.className = 'xiv-icon-inner';
+        innerIconEl.appendChild(createIconElement(iconString));
+        iconEl.appendChild(innerIconEl);
 
         btn.append(lens, scatter, chroma, rim, iconEl);
 
@@ -519,11 +559,14 @@
         container.className = 'xiv-btn-container';
         if (isStory) container.classList.add('xiv-story-mode');
 
-        const openBtn = createGlassButton('Open High-Res Image', ICONS.open, (btn, iconEl) => {
+        const openBtn = createGlassButton('Open High-Res Image in Background', ICONS.open, (btn, iconEl) => {
             executeWithVisualFeedback(btn, iconEl, ICONS.open, async () => {
                 const url = await getHighResUrl(imgEl);
-                if (url) window.open(url, '_blank', 'noopener,noreferrer');
-            }, false);
+                if (url) {
+                    // Opens the tab entirely in the background without stealing focus
+                    GM_openInTab(url, { active: false, insert: true, setParent: true });
+                }
+            }, true); // Setting to true enables the green checkmark morph on success
         });
 
         const dlBtn = createGlassButton('Download Image', ICONS.download, (btn, iconEl) => {

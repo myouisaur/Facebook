@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         [Facebook] Media Extractor
 // @namespace    https://github.com/myouisaur/Facebook
-// @icon         https://www.facebook.com/favicon.ico
-// @version      4.2
+// @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
+// @version      4.3
 // @description  Adds open and download buttons to Facebook images in photo and story views.
 // @author       Xiv
 // @match        *://*.facebook.com/*
@@ -35,7 +35,7 @@
         },
         ui: {
             debounceMs: 250,
-            successDurationMs: 2000
+            successDurationMs: 1000 // Reduced from 2000ms
         }
     };
 
@@ -47,7 +47,6 @@
     const ICONS = {
         download: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
         open: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>`,
-        spinner: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="xiv-spin" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>`,
         check: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
     };
 
@@ -145,6 +144,18 @@
             opacity: 1;
         }
 
+        /* Loading State Override (Ghost-Click Fix) */
+        .xiv-action-btn[data-loading="1"] {
+            /* Physically intercepts clicks instead of passing through to underlying elements */
+            cursor: default !important;
+        }
+
+        /* Out-of-Sync Fade Fix */
+        .xiv-btn-container.xiv-visible .xiv-action-btn[data-loading="1"],
+        .xiv-btn-container.xiv-story-mode .xiv-action-btn[data-loading="1"] {
+            opacity: 0.8 !important;
+        }
+
         /* ── Gradient border ring (mask-composite trick) ── */
         .xiv-action-btn::before {
             content: '';
@@ -215,12 +226,6 @@
                 inset -1px 0   0  rgba(255,255,255,0.10),
                 0 0 0 0.5px       rgba(255,255,255,0.18),
                 0 3px 10px        rgba(0,0,0,0.25);
-        }
-
-        /* Loading State Override */
-        .xiv-action-btn[data-loading="1"] {
-            pointer-events: none;
-            opacity: 0.8 !important;
         }
 
         /* ── Icon wrapper ── */
@@ -316,13 +321,6 @@
         }
         @keyframes xiv-ripple {
             to { transform: scale(2.8); opacity: 0; }
-        }
-
-        @keyframes xiv-spin-anim {
-            100% { transform: rotate(360deg); }
-        }
-        .xiv-spin {
-            animation: xiv-spin-anim 0.9s linear infinite;
         }
     `);
 
@@ -452,19 +450,24 @@
     }
 
     // ---------- UI Interactions ----------
-    async function swapIconSmoothly(iconEl, newSvgString) {
-        const inner = iconEl.querySelector('.xiv-icon-inner');
-        if (!inner) return;
+    function swapIconSmoothly(iconWrapper, newSvgString) {
+        let inner = iconWrapper.querySelector('.xiv-icon-inner');
+
+        if (!inner) {
+            inner = document.createElement('div');
+            inner.className = 'xiv-icon-inner xiv-morphing';
+            iconWrapper.replaceChildren(inner);
+            void inner.offsetWidth; // Force reflow
+        }
 
         return new Promise(resolve => {
             inner.classList.add('xiv-morphing');
             setTimeout(() => {
                 inner.replaceChildren(createIconElement(newSvgString));
-                // Force DOM reflow to restart animation from new state
-                void inner.offsetWidth;
+                void inner.offsetWidth; // Force reflow
                 inner.classList.remove('xiv-morphing');
-                setTimeout(resolve, 250); // Wait for morph-in transition to finish
-            }, 150); // Wait for morph-out transition to finish
+                setTimeout(resolve, 250);
+            }, 150);
         });
     }
 
@@ -472,18 +475,14 @@
         if (btn.dataset.loading === "1") return;
         btn.dataset.loading = "1";
 
-        await swapIconSmoothly(iconEl, ICONS.spinner);
-
+        // Note: The spinner phase has been entirely stripped per user request.
         try {
             await actionFn();
             if (showSuccess) {
                 await swapIconSmoothly(iconEl, ICONS.check);
-            } else {
-                await swapIconSmoothly(iconEl, baseIconString);
             }
         } catch (error) {
             console.error("[Facebook Media Extractor] Action failed:", error);
-            await swapIconSmoothly(iconEl, baseIconString);
         } finally {
             if (showSuccess) {
                 setTimeout(async () => {
@@ -500,6 +499,9 @@
         const btn = document.createElement('div');
         btn.className = 'xiv-action-btn';
         btn.title = title;
+        btn.setAttribute('role', 'button');
+        btn.setAttribute('aria-label', title);
+        btn.setAttribute('tabindex', '0');
 
         const lens = document.createElement('div');
         lens.className = 'xiv-glass-lens';
@@ -510,7 +512,6 @@
         const rim = document.createElement('div');
         rim.className = 'xiv-glass-rim';
 
-        // Inner wrapper specifically for handling the morphing animations cleanly
         const iconEl = document.createElement('span');
         iconEl.className = 'xiv-btn-icon';
         const innerIconEl = document.createElement('div');
@@ -520,7 +521,11 @@
 
         btn.append(lens, scatter, chroma, rim, iconEl);
 
+        const stopPropagation = (e) => { e.stopPropagation(); e.preventDefault(); };
+
         btn.addEventListener('pointerdown', function (e) {
+            if (btn.dataset.loading === "1") return; // Prevent ripple if in loading/success state
+
             const r = btn.getBoundingClientRect();
             const size = Math.max(r.width, r.height);
             const rpl = document.createElement('div');
@@ -530,9 +535,19 @@
             rpl.addEventListener('animationend', () => rpl.remove());
         });
 
+        // Event Sealing: Prevent clicks from hitting the underlying Facebook image/story link
+        btn.addEventListener('mousedown', stopPropagation);
+        btn.addEventListener('mouseup', stopPropagation);
         btn.addEventListener('click', (e) => {
-            e.stopPropagation(); e.preventDefault();
+            stopPropagation(e);
             onClickAction(btn, iconEl);
+        });
+
+        btn.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                stopPropagation(e);
+                onClickAction(btn, iconEl);
+            }
         });
 
         return btn;
@@ -563,10 +578,9 @@
             executeWithVisualFeedback(btn, iconEl, ICONS.open, async () => {
                 const url = await getHighResUrl(imgEl);
                 if (url) {
-                    // Opens the tab entirely in the background without stealing focus
                     GM_openInTab(url, { active: false, insert: true, setParent: true });
                 }
-            }, true); // Setting to true enables the green checkmark morph on success
+            }, true);
         });
 
         const dlBtn = createGlassButton('Download Image', ICONS.download, (btn, iconEl) => {

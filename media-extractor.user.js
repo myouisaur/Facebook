@@ -1,16 +1,16 @@
 // ==UserScript==
 // @name         [Facebook] Media Extractor
 // @namespace    https://github.com/myouisaur/Facebook
-// @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      4.3
+// @icon         https://www.facebook.com/favicon.ico
+// @version      4.4
 // @description  Adds open and download buttons to Facebook images in photo and story views.
 // @author       Xiv
 // @match        *://*.facebook.com/*
 // @noframes
 // @grant        GM_addStyle
 // @grant        GM_openInTab
-// @updateURL    https://myouisaur.github.io/Facebook/image-extractor.user.js
-// @downloadURL  https://myouisaur.github.io/Facebook/image-extractor.user.js
+// @updateURL    https://myouisaur.github.io/Facebook/media-extractor.user.js
+// @downloadURL  https://myouisaur.github.io/Facebook/media-extractor.user.js
 // ==/UserScript==
 
 (function () {
@@ -35,7 +35,7 @@
         },
         ui: {
             debounceMs: 250,
-            successDurationMs: 1000 // Reduced from 2000ms
+            successDurationMs: 1000
         }
     };
 
@@ -69,8 +69,7 @@
         }
 
         /* Active/Visible states */
-        .xiv-btn-container.xiv-visible,
-        .xiv-btn-container.xiv-story-mode {
+        .xiv-btn-container.xiv-visible {
             visibility: visible;
             pointer-events: auto;
             transition: visibility 0s;
@@ -91,8 +90,7 @@
             transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        .xiv-btn-container.xiv-visible::before,
-        .xiv-btn-container.xiv-story-mode::before {
+        .xiv-btn-container.xiv-visible::before {
             opacity: 1;
         }
 
@@ -139,8 +137,7 @@
         }
 
         /* Button fade-in trigger */
-        .xiv-btn-container.xiv-visible .xiv-action-btn,
-        .xiv-btn-container.xiv-story-mode .xiv-action-btn {
+        .xiv-btn-container.xiv-visible .xiv-action-btn {
             opacity: 1;
         }
 
@@ -151,8 +148,7 @@
         }
 
         /* Out-of-Sync Fade Fix */
-        .xiv-btn-container.xiv-visible .xiv-action-btn[data-loading="1"],
-        .xiv-btn-container.xiv-story-mode .xiv-action-btn[data-loading="1"] {
+        .xiv-btn-container.xiv-visible .xiv-action-btn[data-loading="1"] {
             opacity: 0.8 !important;
         }
 
@@ -320,7 +316,8 @@
             z-index: 7;
         }
         @keyframes xiv-ripple {
-            to { transform: scale(2.8); opacity: 0; }
+            to { transform: scale(2.8);
+            opacity: 0; }
         }
     `);
 
@@ -452,7 +449,6 @@
     // ---------- UI Interactions ----------
     function swapIconSmoothly(iconWrapper, newSvgString) {
         let inner = iconWrapper.querySelector('.xiv-icon-inner');
-
         if (!inner) {
             inner = document.createElement('div');
             inner.className = 'xiv-icon-inner xiv-morphing';
@@ -475,7 +471,6 @@
         if (btn.dataset.loading === "1") return;
         btn.dataset.loading = "1";
 
-        // Note: The spinner phase has been entirely stripped per user request.
         try {
             await actionFn();
             if (showSuccess) {
@@ -518,11 +513,9 @@
         innerIconEl.className = 'xiv-icon-inner';
         innerIconEl.appendChild(createIconElement(iconString));
         iconEl.appendChild(innerIconEl);
-
         btn.append(lens, scatter, chroma, rim, iconEl);
 
         const stopPropagation = (e) => { e.stopPropagation(); e.preventDefault(); };
-
         btn.addEventListener('pointerdown', function (e) {
             if (btn.dataset.loading === "1") return; // Prevent ripple if in loading/success state
 
@@ -534,7 +527,6 @@
             btn.appendChild(rpl);
             rpl.addEventListener('animationend', () => rpl.remove());
         });
-
         // Event Sealing: Prevent clicks from hitting the underlying Facebook image/story link
         btn.addEventListener('mousedown', stopPropagation);
         btn.addEventListener('mouseup', stopPropagation);
@@ -542,20 +534,16 @@
             stopPropagation(e);
             onClickAction(btn, iconEl);
         });
-
         btn.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 stopPropagation(e);
                 onClickAction(btn, iconEl);
             }
         });
-
         return btn;
     }
 
-    function setupHoverContext(parentEl, containerEl, isStory) {
-        if (isStory) return;
-
+    function setupHoverContext(parentEl, containerEl) {
         parentEl.addEventListener('mouseenter', () => containerEl.classList.add('xiv-visible'));
         parentEl.addEventListener('mouseleave', () => containerEl.classList.remove('xiv-visible'));
 
@@ -573,7 +561,6 @@
         const container = document.createElement('div');
         container.className = 'xiv-btn-container';
         if (isStory) container.classList.add('xiv-story-mode');
-
         const openBtn = createGlassButton('Open High-Res Image in Background', ICONS.open, (btn, iconEl) => {
             executeWithVisualFeedback(btn, iconEl, ICONS.open, async () => {
                 const url = await getHighResUrl(imgEl);
@@ -582,14 +569,12 @@
                 }
             }, true);
         });
-
         const dlBtn = createGlassButton('Download Image', ICONS.download, (btn, iconEl) => {
             executeWithVisualFeedback(btn, iconEl, ICONS.download, async () => {
                 const url = await getHighResUrl(imgEl);
                 if (url) await downloadImage(url, filename);
             });
         });
-
         container.appendChild(openBtn);
         container.appendChild(dlBtn);
 
@@ -599,7 +584,7 @@
             parent.appendChild(container);
         }
 
-        setupHoverContext(parent, container, isStory);
+        setupHoverContext(parent, container);
         processedElements.add(imgEl);
     }
 
@@ -626,7 +611,6 @@
             }
         }
     }, CONFIG.ui.debounceMs);
-
     // ---------- Lifecycle Observers ----------
     const domObserver = new MutationObserver((mutations) => {
         let requiresCheck = false;
@@ -640,7 +624,6 @@
         }
         if (requiresCheck) processTargets();
     });
-
     function initObserver() {
         domObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
         processTargets();
@@ -653,7 +636,6 @@
             initObserver();
         }
     });
-
     initObserver();
 
 })();

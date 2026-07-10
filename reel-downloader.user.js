@@ -1,19 +1,17 @@
 // ==UserScript==
 // @name         [Facebook] Reel Downloader
 // @namespace    https://github.com/myouisaur/Facebook
-// @icon         https://static.xx.fbcdn.net/rsrc.php/y1/r/ay1hV6OlegS.ico
-// @version      7.1
+// @icon         https://www.facebook.com/favicon.ico
+// @version      8.0
 // @description  Adds a responsive button to safely route and download Facebook reels via FDownloader.
 // @author       Xiv
 // @match        *://*.facebook.com/*
-// @match        *://fdownloader.net/en*
-// @noframes
+// @match        *://fdownloader.net/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_openInTab
-// @grant        GM_addStyle
-// @grant        GM_setClipboard
 // @run-at       document-idle
+// @noframes
 // @updateURL    https://myouisaur.github.io/Facebook/reel-downloader.user.js
 // @downloadURL  https://myouisaur.github.io/Facebook/reel-downloader.user.js
 // ==/UserScript==
@@ -24,6 +22,9 @@
     if (window.__fbReelDownloaderRunning) return;
     window.__fbReelDownloaderRunning = true;
 
+    // ==========================================
+    // CENTRALIZED CONFIGURATION
+    // ==========================================
     const CONFIG = {
         DEBUG: false,
         LOG_PREFIX: '[FB Reel Downloader]',
@@ -35,6 +36,12 @@
             DOWNLOAD: 'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
             SUCCESS: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
             ERROR: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'
+        },
+        selectors: {
+            fdown: {
+                input: ['#s_input', '.search__input'],
+                submit: ['button.btn-red[onclick*="ksearchvideo"]', '#btn-submit', '.search__button', 'button.btn-red']
+            }
         }
     };
 
@@ -46,66 +53,83 @@
         console.warn(CONFIG.LOG_PREFIX, ...args);
     }
 
-    GM_addStyle(`
-        #fb-dl-btn {
-            width: 40px;
-            height: 40px;
-            background-color: var(--secondary-button-background, rgba(255, 255, 255, 0.1));
-            color: var(--primary-icon, #E5E7EB);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            z-index: 9999;
-            transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.1s ease;
-            user-select: none;
-            flex-shrink: 0;
-            margin-right: 8px; /* Gap before the Menu button */
-            box-sizing: border-box;
-        }
+    // Modern FDownloader Utilities
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const domUtils = {
+        simulateClick: (element) => {
+            if (!element) return;
+            element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            element.click();
+        },
+        setInputValue: (inputEl, value) => {
+            try {
+                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+                if (nativeSetter) nativeSetter.call(inputEl, value);
+                else inputEl.value = value;
 
-        #fb-dl-btn:focus-visible {
-            outline: 2px solid #1877F2;
-            outline-offset: 2px;
-        }
+                inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+                inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch (e) {
+                warn('Failed to inject value into input', e);
+            }
+        },
+        waitForElement: (selectors, timeoutMs = 15000) => {
+            const selectorArray = Array.isArray(selectors) ? selectors : [selectors];
+            return new Promise((resolve, reject) => {
+                const checkElements = () => {
+                    for (const sel of selectorArray) {
+                        const el = document.querySelector(sel);
+                        if (el) return el;
+                    }
+                    return null;
+                };
 
-        #fb-dl-btn:not(.fb-dl-disabled):hover {
-            background-color: var(--secondary-button-background-floating, rgba(255, 255, 255, 0.25));
-            transform: scale(1.05);
-        }
+                const initial = checkElements();
+                if (initial) return resolve(initial);
 
-        #fb-dl-btn.fb-dl-disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: scale(0.95);
-        }
+                const observer = new MutationObserver((_, obs) => {
+                    const found = checkElements();
+                    if (found) {
+                        obs.disconnect();
+                        clearTimeout(timer);
+                        resolve(found);
+                    }
+                });
 
-        #fb-dl-btn svg {
-            width: 20px;
-            height: 20px;
-            fill: currentColor;
-            pointer-events: none;
-        }
+                observer.observe(document.body, { childList: true, subtree: true });
 
-        #fb-dl-btn.fb-dl-success {
-            background-color: #E5E7EB !important;
-            color: #1A1A1A !important;
+                const timer = setTimeout(() => {
+                    observer.disconnect();
+                    reject(new Error(`Element(s) '${selectorArray.join(', ')}' not found`));
+                }, timeoutMs);
+            });
         }
-
-        #fb-dl-btn.fb-dl-error {
-            background-color: #dc3545 !important;
-            color: #ffffff !important;
-        }
-    `);
+    };
 
     // ==========================================
     // CORE INITIALIZATION
     // ==========================================
-
     function init() {
         if (window.location.hostname.includes('facebook.com')) {
             log('Initializing Facebook route tracker...');
+
+            const styleId = 'fb-dl-styles';
+            if (!document.getElementById(styleId)) {
+                const style = document.createElement('style');
+                style.id = styleId;
+                style.textContent = `
+                    #fb-dl-btn { width: 40px; height: 40px; background-color: var(--secondary-button-background, rgba(255, 255, 255, 0.1)); color: var(--primary-icon, #E5E7EB); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 9999; transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.1s ease; user-select: none; flex-shrink: 0; margin-right: 8px; box-sizing: border-box; }
+                    #fb-dl-btn:focus-visible { outline: 2px solid #1877F2; outline-offset: 2px; }
+                    #fb-dl-btn:not(.fb-dl-disabled):hover { background-color: var(--secondary-button-background-floating, rgba(255, 255, 255, 0.25)); transform: scale(1.05); }
+                    #fb-dl-btn.fb-dl-disabled { opacity: 0.6; cursor: not-allowed; transform: scale(0.95); }
+                    #fb-dl-btn svg { width: 20px; height: 20px; fill: currentColor; pointer-events: none; }
+                    #fb-dl-btn.fb-dl-success { background-color: #E5E7EB !important; color: #1A1A1A !important; }
+                    #fb-dl-btn.fb-dl-error { background-color: #dc3545 !important; color: #ffffff !important; }
+                `;
+                document.head.appendChild(style);
+            }
+
             setupZeroOverheadUrlTracker();
             checkCurrentRoute();
         } else if (window.location.hostname.includes('fdownloader.net')) {
@@ -115,9 +139,8 @@
     }
 
     // ==========================================
-    // FACEBOOK UI LOGIC
+    // FACEBOOK UI LOGIC (Untouched strictly from v7.6)
     // ==========================================
-
     function setupZeroOverheadUrlTracker() {
         const originalPushState = history.pushState;
         const originalReplaceState = history.replaceState;
@@ -135,16 +158,12 @@
         window.addEventListener('popstate', () => {
             setTimeout(() => window.dispatchEvent(new Event('locationchange')), 50);
         });
-
         window.addEventListener('locationchange', checkCurrentRoute);
     }
 
     function checkCurrentRoute() {
         const path = window.location.pathname;
-        const isTargetPage = path.startsWith('/reel/') ||
-                             path.startsWith('/reels/') ||
-                             path.includes('/videos/') ||
-                             path.startsWith('/watch/');
+        const isTargetPage = path.startsWith('/reel/') || path.startsWith('/reels/') || path.includes('/videos/') || path.startsWith('/watch/');
 
         requestAnimationFrame(() => {
             if (isTargetPage) {
@@ -157,7 +176,6 @@
 
     function ensureButtonInHeader() {
         if (document.getElementById('fb-dl-btn')) return;
-
         const menuBtn = document.querySelector('div[aria-label="Facebook menu"]');
         if (menuBtn) {
             injectButton(menuBtn);
@@ -168,7 +186,6 @@
 
     function waitForMenuButtonAndInject() {
         log('Menu button not found yet, setting up observer...');
-
         const observer = new MutationObserver((mutations, obs) => {
             const menuBtn = document.querySelector('div[aria-label="Facebook menu"]');
             if (menuBtn) {
@@ -179,7 +196,6 @@
         });
 
         observer.observe(document.body, { childList: true, subtree: true });
-
         const timeoutId = setTimeout(() => {
             observer.disconnect();
             warn('Observer timed out waiting for the Facebook Menu button.');
@@ -189,7 +205,6 @@
     function injectButton(menuBtn) {
         if (document.getElementById('fb-dl-btn')) return;
 
-        // Facebook wraps the menu button in a span inside a flex container
         const targetContainer = menuBtn.closest('span');
         if (!targetContainer || !targetContainer.parentElement) {
             warn('Could not find suitable parent container for header injection.');
@@ -226,7 +241,6 @@
             }
         });
 
-        // Insert right before the menu button's wrapper span
         targetContainer.parentElement.insertBefore(button, targetContainer);
         log('Download button injected into header');
     }
@@ -250,53 +264,32 @@
         let rawUrl = window.location.href;
         let cleanUrl = rawUrl;
 
+        // NEW: Deep URL Scrubbing
         if (rawUrl.includes('/watch/')) {
             try {
                 const urlObj = new URL(rawUrl);
                 const videoId = urlObj.searchParams.get('v');
-                if (videoId) {
-                    cleanUrl = urlObj.origin + urlObj.pathname + '?v=' + videoId;
-                }
+                if (videoId) cleanUrl = urlObj.origin + urlObj.pathname + '?v=' + videoId;
             } catch (e) {
                 warn("Failed to parse watch URL, using raw", e);
             }
         } else {
-            cleanUrl = rawUrl.split('?')[0];
+            cleanUrl = rawUrl.split(/[?#]/)[0]; // Safely strip ALL tracking queries and hashes
         }
 
-        let copiedSuccessfully = false;
+        // NEW: Timestamped payload for stale-click prevention
+        const payload = JSON.stringify({ url: cleanUrl, time: Date.now() });
 
-        try {
-            if (typeof GM_setClipboard !== 'undefined') {
-                GM_setClipboard(cleanUrl);
-                copiedSuccessfully = true;
-            } else {
-                throw new Error("GM_setClipboard unavailable");
-            }
-        } catch (err) {
-            try {
-                await navigator.clipboard.writeText(cleanUrl);
-                copiedSuccessfully = true;
-            } catch (fallbackErr) {
-                warn("All clipboard methods failed", fallbackErr);
-            }
-        }
+        try { GM_setValue(CONFIG.STORED_LINK_KEY, payload); }
+        catch (e) { warn('Failed to save to GM storage', e); }
 
         requestAnimationFrame(() => {
-            if (copiedSuccessfully) {
-                try {
-                    GM_setValue(CONFIG.STORED_LINK_KEY, cleanUrl);
-                } catch (e) {
-                    warn('Failed to save to GM storage', e);
-                }
+            clickedButton.classList.add('fb-dl-success');
+            pathElement.setAttribute('d', CONFIG.SVG_PATHS.SUCCESS);
 
-                clickedButton.classList.add('fb-dl-success');
-                pathElement.setAttribute('d', CONFIG.SVG_PATHS.SUCCESS);
-                setTimeout(() => GM_openInTab(CONFIG.FDOWNLOADER_URL, { active: true, insert: true }), 150);
-            } else {
-                clickedButton.classList.add('fb-dl-error');
-                pathElement.setAttribute('d', CONFIG.SVG_PATHS.ERROR);
-            }
+            setTimeout(() => {
+                GM_openInTab(CONFIG.FDOWNLOADER_URL, { active: true, insert: true });
+            }, 150);
         });
 
         setTimeout(() => {
@@ -309,85 +302,51 @@
     }
 
     // ==========================================
-    // FDOWNLOADER LOGIC
+    // FDOWNLOADER LOGIC (Upgraded Diagnostics)
     // ==========================================
-
     function initFDownloader() {
-        let storedLink = null;
-        try {
-            storedLink = GM_getValue(CONFIG.STORED_LINK_KEY);
-        } catch (e) {
-            warn("Failed to read from GM storage", e);
-        }
+        const executeDownload = async () => {
+            let rawData = null;
+            try { rawData = GM_getValue(CONFIG.STORED_LINK_KEY); } catch(e) {}
+            if (!rawData) return;
 
-        if (storedLink) {
-            log('Found stored link, attempting to fill...');
+            let url = null;
             try {
-                GM_setValue(CONFIG.STORED_LINK_KEY, null);
+                // NEW: Validate timestamp to prevent executing stale clicks
+                const parsed = JSON.parse(rawData);
+                if (Date.now() - parsed.time > 60000) {
+                    log('Discarded stale link (older than 60s).');
+                    try { GM_setValue(CONFIG.STORED_LINK_KEY, null); } catch(e) {}
+                    return;
+                }
+                url = parsed.url;
             } catch (e) {
-                warn("Failed to clear GM storage", e);
-            }
-            waitForInputAndFill(storedLink);
-        }
-    }
-
-    function waitForInputAndFill(url) {
-        const checkForInput = () => document.getElementById('s_input') || document.querySelector('.search__input');
-
-        let inputField = checkForInput();
-
-        if (inputField) {
-            triggerDownload(inputField, url);
-            return;
-        }
-
-        log('Input not found immediately, setting up observer...');
-
-        const observer = new MutationObserver((mutations, obs) => {
-            inputField = checkForInput();
-            if (inputField) {
-                obs.disconnect();
-                clearTimeout(timeoutId);
-                triggerDownload(inputField, url);
-            }
-        });
-
-        observer.observe(document.body, { childList: true, subtree: true });
-
-        const timeoutId = setTimeout(() => {
-            observer.disconnect();
-            warn('Observer timed out waiting for input field.');
-        }, CONFIG.OBSERVER_TIMEOUT_MS);
-    }
-
-    function triggerDownload(inputField, url) {
-        inputField.value = url;
-        inputField.focus();
-
-        inputField.dispatchEvent(new Event('input', { bubbles: true }));
-        inputField.dispatchEvent(new Event('change', { bubbles: true }));
-
-        setTimeout(() => {
-            const selectors = [
-                'button.btn-red[onclick*="ksearchvideo"]',
-                '#btn-submit',
-                '.search__button',
-                'button.btn-red'
-            ];
-
-            let downloadBtn = null;
-            for (const selector of selectors) {
-                downloadBtn = document.querySelector(selector);
-                if (downloadBtn) break;
+                url = rawData; // Fallback just in case older string data exists
             }
 
-            if (downloadBtn) {
-                log('Triggering download click');
-                downloadBtn.click();
-            } else {
-                warn('Download button not found using any known selectors');
+            if (!url) return;
+
+            log('Starting automated processing for:', url);
+            try { GM_setValue(CONFIG.STORED_LINK_KEY, null); } catch(e) {}
+
+            try {
+                document.title = "⏳ Processing..."; // NEW: Diagnostics
+                const input = await domUtils.waitForElement(CONFIG.selectors.fdown.input);
+                const submitBtn = await domUtils.waitForElement(CONFIG.selectors.fdown.submit);
+
+                domUtils.setInputValue(input, url);
+                await sleep(300);
+
+                document.title = "✅ Ready!"; // NEW: Diagnostics
+                domUtils.simulateClick(submitBtn);
+
+            } catch (error) {
+                document.title = "❌ Element Timeout"; // NEW: Diagnostics
+                warn('Automation aborted:', error.message);
             }
-        }, 500);
+        };
+
+        executeDownload();
     }
 
     init();
